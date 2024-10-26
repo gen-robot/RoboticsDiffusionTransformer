@@ -4,7 +4,6 @@
 # Import a create function from the code base
 from scripts.agilex_model import create_model
 
-
 # Names of cameras used for visual input
 CAMERA_NAMES = ['cam_high', 'cam_right_wrist', 'cam_left_wrist']
 config = {
