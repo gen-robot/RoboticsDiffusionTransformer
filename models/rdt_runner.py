@@ -8,8 +8,8 @@ from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from diffusers.schedulers.scheduling_dpmsolver_multistep import \
     DPMSolverMultistepScheduler
 
-from models.hub_mixin import CompatiblePyTorchModelHubMixin
-from models.rdt.model import RDT
+from .hub_mixin import CompatiblePyTorchModelHubMixin
+from .rdt.model import RDT
 
 
 class RDTRunner(
