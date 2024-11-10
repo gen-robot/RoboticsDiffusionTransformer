@@ -18,8 +18,8 @@ class HDF5VLADataset:
     def __init__(self) -> None:
         # [Modify] The path to the HDF5 dataset directory
         # Each HDF5 file contains one episode
-        HDF5_DIR = "data/datasets/agilex/rdt_data/"
-        self.DATASET_NAME = "agilex"
+        HDF5_DIR = "data/datasets/close_laptop/"
+        self.DATASET_NAME = "close_laptop"
         
         self.file_paths = []
         for root, _, files in os.walk(HDF5_DIR):
@@ -176,6 +176,7 @@ class HDF5VLADataset:
                     np.tile(actions[-1:], (self.CHUNK_SIZE-actions.shape[0], 1))
                 ], axis=0)
             
+            
             # Fill the state/action into the unified vector
             def fill_in_state(values):
                 # Target indices corresponding to your state space
@@ -192,6 +193,8 @@ class HDF5VLADataset:
                 uni_vec = np.zeros(values.shape[:-1] + (self.STATE_DIM,))
                 uni_vec[..., UNI_STATE_INDICES] = values
                 return uni_vec
+            
+            
             state = fill_in_state(state)
             state_indicator = fill_in_state(np.ones_like(state_std))
             state_std = fill_in_state(state_std)

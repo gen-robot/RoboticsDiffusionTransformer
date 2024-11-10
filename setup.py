@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
 setup(name='rdt',
-    packages=find_packages(include="models"),
+    packages=find_packages(include=["models","data",]),
     version='0.0.0',
 )
