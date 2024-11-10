@@ -22,13 +22,13 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--pretrained_text_encoder_name_or_path",
         type=str,
-        default=None,
+        default="google/t5-v1_1-xxl",
         help="Pretrained text encoder name or path if not the same as model_name",
     )
     parser.add_argument(
         "--pretrained_vision_encoder_name_or_path",
         type=str,
-        default=None,
+        default="google/siglip-so400m-patch14-384",
         help="Pretrained vision encoder name or path if not the same as model_name",
     )
     
@@ -43,7 +43,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--load_from_hdf5",
         action="store_true",
-        default=False,
+        default=True,
         help=(
             "Whether to load the dataset directly from HDF5 files. "
             "If False, the dataset will be loaded using producer-consumer pattern, "
@@ -51,10 +51,10 @@ def parse_args(input_args=None):
         )
     )
     parser.add_argument(
-        "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
+        "--train_batch_size", type=int, default=32, help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument(
-        "--sample_batch_size", type=int, default=8, help="Batch size (per device) for the sampling dataloader."
+        "--sample_batch_size", type=int, default=64, help="Batch size (per device) for the sampling dataloader."
     )
     parser.add_argument(
         "--num_sample_batches", type=int, default=2, help="Number of batches to sample from the dataset."
@@ -63,13 +63,13 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--max_train_steps",
         type=int,
-        default=None,
+        default=200000,
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
     parser.add_argument(
         "--checkpointing_period",
         type=int,
-        default=500,
+        default=1000,
         help=(
             "Save a checkpoint of the training state every X updates. Checkpoints can be used for resuming training via `--resume_from_checkpoint`. "
             "In the case that the checkpoint is better than the final trained model, the checkpoint can also be used for inference."
@@ -81,7 +81,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--checkpoints_total_limit",
         type=int,
-        default=None,
+        default=40,
         help=(
             "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
             " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
@@ -100,7 +100,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
-        default=None,
+        default="robotics-diffusion-transformer/rdt-1b",
         help=(
             "Path or name of a pretrained checkpoint to load the model from.\n",
             "   This can be either:\n"
@@ -124,7 +124,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=5e-6,
+        default=1e-4,
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
@@ -148,7 +148,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--state_noise_snr",
         type=float,
-        default=None,
+        default=40,
         help=(
             "The signal-to-noise ratio (SNR, unit: dB) for adding noise to the states. "
             "Default is None, which means no noise is added."
@@ -157,7 +157,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--image_aug",
         action="store_true",
-        default=False,
+        default=True,
         help="Whether or not to apply image augmentation (ColorJitter, blur, noise, etc) to the input images.",
     )
     parser.add_argument(
@@ -197,7 +197,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--dataloader_num_workers",
         type=int,
-        default=0,
+        default=8,
         help=(
             "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
         ),
@@ -236,7 +236,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--report_to",
         type=str,
-        default="tensorboard",
+        default="tensorboard", #wandb
         help=(
             'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
             ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
@@ -245,7 +245,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--sample_period",
         type=int,
-        default=-1,
+        default=500,
         help=(
             "Run sampling every X steps. During the sampling phase, the model will sample a trajectory"
             " and report the error between the sampled trajectory and groud-truth trajectory"
@@ -255,7 +255,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--mixed_precision",
         type=str,
-        default=None,
+        default="bf16",
         choices=["no", "fp16", "bf16"],
         help=(
             "Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
@@ -277,7 +277,7 @@ def parse_args(input_args=None):
 
     parser.add_argument('--dataset_type', 
         type=str, 
-        default="pretrain",
+        default="fineture",# "pretrain"
         required=False,
         help="Whether to load the pretrain dataset or finetune dataset."
     )

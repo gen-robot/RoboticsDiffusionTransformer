@@ -182,17 +182,6 @@ def train(args, logger):
             dtype=weight_dtype,
         )
         
-                                                                       
-    ema_rdt = copy.deepcopy(rdt)
-    ema_model = EMAModel(
-        ema_rdt,
-        update_after_step=config["model"]["ema"]["update_after_step"],
-        inv_gamma=config["model"]["ema"]["inv_gamma"],
-        power=config["model"]["ema"]["power"],
-        min_value=config["model"]["ema"]["min_value"],
-        max_value=config["model"]["ema"]["max_value"]
-    )
-
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     # which ensure saving model in huggingface format (config.json + pytorch_model.bin)
     def save_model_hook(models, weights, output_dir):
@@ -313,8 +302,6 @@ def train(args, logger):
         rdt, optimizer, train_dataloader, sample_dataloader, lr_scheduler                   
     )
 
-    ema_rdt.to(accelerator.device, dtype=weight_dtype)                                                                             
-
     if text_encoder is not None:
         text_encoder.to(accelerator.device, dtype=weight_dtype)
     
@@ -358,50 +345,9 @@ def train(args, logger):
         checkpoint = torch.load(args.pretrained_model_name_or_path)
         rdt.module.load_state_dict(checkpoint["module"])
    
-    # Potentially load in the weights and states from a previous save
-    if args.resume_from_checkpoint:
-        if args.resume_from_checkpoint != "latest":
-            path = os.path.basename(args.resume_from_checkpoint)
-        else:
-            # Get the mos recent checkpoint
-            dirs = os.listdir(args.output_dir)
-            dirs = [d for d in dirs if d.startswith("checkpoint")]
-            dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-            path = dirs[-1] if len(dirs) > 0 else None
-
-        if path is None:
-            accelerator.print(
-                f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
-            )
-            args.resume_from_checkpoint = None
-        else:
-            accelerator.print(f"Resuming from checkpoint {path}")
-            try:
-                accelerator.load_state(os.path.join(args.output_dir, path)) # load_module_strict=False
-            except:
-                # load deepspeed's state_dict
-                logger.info("Resuming training state failed. Attempting to only load from model checkpoint.")
-                checkpoint = torch.load(os.path.join(args.output_dir, path, "pytorch_model", "mp_rank_00_model_states.pt"))
-                rdt.module.load_state_dict(checkpoint["module"])
-                
-            load_model(ema_rdt, os.path.join(args.output_dir, path, "ema", "model.safetensors"))
-            global_step = int(path.split("-")[1])
-
-            resume_global_step = global_step * args.gradient_accumulation_steps
-            first_epoch = global_step // num_update_steps_per_epoch
-            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
-
-    # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
-    progress_bar.set_description("Steps")
-
     for epoch in range(first_epoch, args.num_train_epochs):
 
         rdt.eval()
-        
-        # Set the progress_bar to correct position
-        if args.resume_from_checkpoint and epoch == first_epoch:
-            progress_bar.update(resume_step // args.gradient_accumulation_steps)
         
         # Forward and backward...
         for batch in train_dataloader:
