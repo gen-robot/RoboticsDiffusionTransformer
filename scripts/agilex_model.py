@@ -5,10 +5,10 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
-from configs.state_vec import STATE_VEC_IDX_MAPPING
-from models.multimodal_encoder.siglip_encoder import SiglipVisionTower
-from models.multimodal_encoder.t5_encoder import T5Embedder
-from models.rdt_runner import RDTRunner
+from ..configs.state_vec import STATE_VEC_IDX_MAPPING
+from ..models.multimodal_encoder.siglip_encoder import SiglipVisionTower
+from ..models.multimodal_encoder.t5_encoder import T5Embedder
+from ..models.rdt_runner import RDTRunner
 
 
 # The indices that the raw vector should be mapped to in the unified action vector
