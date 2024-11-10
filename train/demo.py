@@ -17,6 +17,7 @@ import copy
 import logging
 import math
 import os
+import numpy as np
 from pathlib import Path
 
 import diffusers
@@ -73,6 +74,10 @@ This is a RDT model derived from {base_model}. The weights were trained using [R
 
 
 def train(args, logger):
+    
+    generated_actions = []
+    original_actions = []
+    
     # Read the config
     with open(args.config_path, "r") as fp:
         config = yaml.safe_load(fp)
@@ -271,7 +276,7 @@ def train(args, logger):
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=args.train_batch_size,
-        shuffle=True,
+        shuffle=False,
         collate_fn=data_collator,
         num_workers=args.dataloader_num_workers,
         pin_memory=True,
@@ -280,7 +285,7 @@ def train(args, logger):
     sample_dataloader = torch.utils.data.DataLoader(
         sample_dataset,
         batch_size=args.sample_batch_size,
-        shuffle=True,
+        shuffle=False,
         collate_fn=data_collator,
         num_workers=args.dataloader_num_workers,
         pin_memory=True,
@@ -390,10 +395,9 @@ def train(args, logger):
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
 
-    loss_for_log = {}
     for epoch in range(first_epoch, args.num_train_epochs):
 
-        rdt.train()
+        rdt.eval()
         
         # Set the progress_bar to correct position
         if args.resume_from_checkpoint and epoch == first_epoch:
@@ -403,13 +407,14 @@ def train(args, logger):
         for batch in train_dataloader:
             with accelerator.accumulate(rdt):
                 images = batch["images"].to(dtype=weight_dtype)
-                states = batch["states"].to(dtype=weight_dtype) # (B, T, D_a)
+                states = batch["states"].to(dtype=weight_dtype)  # (B, T, D_a)
                 # We only use the last state as input
-                states = states[:, -1:, :]
+                states = states[:, -1:, :] 
+                # The raw actions below
                 actions = batch["actions"].to(dtype=weight_dtype)
                 state_elem_mask = batch["state_elem_mask"].to(dtype=weight_dtype)
                 ctrl_freqs = batch["ctrl_freqs"]
-                    
+
                 with torch.no_grad():
                     batch_size, _, C, H, W = images.shape
                     image_embeds = vision_encoder(images.reshape(-1, C, H, W)).detach()
@@ -422,86 +427,27 @@ def train(args, logger):
                             input_ids=batch["input_ids"],
                             attention_mask=lang_attn_mask
                         )["last_hidden_state"].detach()
-                
+
                 state_elem_mask = state_elem_mask.unsqueeze(1)
-                loss = rdt(
+                outputs = rdt(
                     lang_tokens=text_embeds,
                     lang_attn_mask=lang_attn_mask,
                     img_tokens=image_embeds,
                     state_tokens=states,
-                    action_gt=actions,
+                    action_gt=None,  # 不需要计算损失，所以设置为None
                     action_mask=state_elem_mask,
                     ctrl_freqs=ctrl_freqs
                 )
 
-                accelerator.backward(loss)
-                if accelerator.sync_gradients:
-                    params_to_clip = rdt.parameters()
-                    accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+                generated_actions.append(outputs['action'].cpu().numpy())
+                original_actions.append(actions.cpu().numpy())
             
-            ema_model.step(accelerator.unwrap_model(rdt))
+    # Save the actions to files
+    np.save(os.path.join(args.output_dir, "generated_actions.npy"), generated_actions)
+    np.save(os.path.join(args.output_dir, "original_actions.npy"), original_actions)
 
-            # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients:
-                progress_bar.update(1)
-                global_step += 1
-
-                if global_step % args.checkpointing_period == 0:
-                    save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                    accelerator.save_state(save_path)
-                    ema_save_path = os.path.join(save_path, f"ema")
-                    accelerator.save_model(ema_rdt, ema_save_path)
-                    logger.info(f"Saved state to {save_path}")
-
-                if args.sample_period > 0 and global_step % args.sample_period == 0:
-                    sample_loss_for_log = log_sample_res(
-                        text_encoder,
-                        vision_encoder,
-                        rdt,    # We do not use EMA currently
-                        args,
-                        accelerator,
-                        weight_dtype,
-                        sample_dataset.get_dataset_id2name(),
-                        sample_dataloader,
-                        logger,
-                    )
-                    logger.info(sample_loss_for_log)
-                    accelerator.log(sample_loss_for_log, step=global_step)
-
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
-            progress_bar.set_postfix(**logs)
-            logs.update(loss_for_log)
-            # logger.info(logs)
-            accelerator.log(logs, step=global_step)
-
-            if global_step >= args.max_train_steps:
-                break
-
-    # Create the pipeline using using the trained modules and save it.
-    accelerator.wait_for_everyone()
-    if accelerator.is_main_process:
-        accelerator.unwrap_model(rdt).save_pretrained(args.output_dir)
-        ema_save_path = os.path.join(args.output_dir, f"ema")
-        accelerator.save_model(ema_rdt, ema_save_path)
-        
-        logger.info(f"Saved Model to {args.output_dir}")
-
-        if args.push_to_hub:
-            save_model_card(
-                repo_id,
-                base_model=args.pretrained_model_name_or_path,
-                repo_folder=args.output_dir,
-            )
-            upload_folder(
-                repo_id=repo_id,
-                folder_path=args.output_dir,
-                commit_message="End of training",
-                token=args.hub_token,
-                allow_patterns=["pytorch_model.bin", "*.json", "*.md"],
-                # ignore_patterns=["step_*", "epoch_*"],
-            )
-            
+    print("generated_actions: ", generated_actions)
+    print("original_actions: ", original_actions)
+    print(f"Generated actions and original actions saved to {args.output_dir}")
+    
     accelerator.end_training()
