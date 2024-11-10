@@ -1,6 +1,7 @@
 import argparse
 import os
-from train.train import train
+from train.demo import train
+from train.demo_raw_action import train_raw_action
 
 from accelerate.logging import get_logger
 
@@ -297,4 +298,4 @@ def parse_args(input_args=None):
 if __name__ == "__main__":
     logger = get_logger(__name__)
     args = parse_args()
-    train(args, logger)
+    train_raw_action(args, logger)

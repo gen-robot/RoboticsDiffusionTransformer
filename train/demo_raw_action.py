@@ -73,9 +73,8 @@ This is a RDT model derived from {base_model}. The weights were trained using [R
         f.write(yaml + model_card)
 
 
-def train(args, logger):
+def train_raw_action(args, logger):
     
-    generated_actions = []
     original_actions = []
     
     # Read the config
@@ -351,48 +350,12 @@ def train(args, logger):
         
         # Forward and backward...
         for batch in train_dataloader:
-            with accelerator.accumulate(rdt):
-                images = batch["images"].to(dtype=weight_dtype)
-                states = batch["states"].to(dtype=weight_dtype)  # (B, T, D_a)
-                # We only use the last state as input
-                states = states[:, -1:, :] 
-                # The raw actions below
-                actions = batch["actions"].to(dtype=weight_dtype)
-                state_elem_mask = batch["state_elem_mask"].to(dtype=weight_dtype)
-                ctrl_freqs = batch["ctrl_freqs"]
-
-                with torch.no_grad():
-                    batch_size, _, C, H, W = images.shape
-                    image_embeds = vision_encoder(images.reshape(-1, C, H, W)).detach()
-                    image_embeds = image_embeds.reshape((batch_size, -1, vision_encoder.hidden_size))
-
-                    lang_attn_mask = batch["lang_attn_mask"]
-                    text_embeds = batch["lang_embeds"].to(dtype=weight_dtype) \
-                        if args.precomp_lang_embed \
-                        else text_encoder(
-                            input_ids=batch["input_ids"],
-                            attention_mask=lang_attn_mask
-                        )["last_hidden_state"].detach()
-
-                state_elem_mask = state_elem_mask.unsqueeze(1)
-                outputs = rdt(
-                    lang_tokens=text_embeds,
-                    lang_attn_mask=lang_attn_mask,
-                    img_tokens=image_embeds,
-                    state_tokens=states,
-                    action_gt=None,  # 不需要计算损失，所以设置为None
-                    action_mask=state_elem_mask,
-                    ctrl_freqs=ctrl_freqs
-                )
-
-                generated_actions.append(outputs['action'].cpu().numpy())
-                original_actions.append(actions.cpu().numpy())
+            actions = batch["actions"].to(dtype=weight_dtype)
+            original_actions.append(actions.cpu().numpy())
             
     # Save the actions to files
-    np.save(os.path.join(args.output_dir, "generated_actions.npy"), generated_actions)
     np.save(os.path.join(args.output_dir, "original_actions.npy"), original_actions)
 
-    print("generated_actions: ", generated_actions)
     print("original_actions: ", original_actions)
     print(f"Generated actions and original actions saved to {args.output_dir}")
     
