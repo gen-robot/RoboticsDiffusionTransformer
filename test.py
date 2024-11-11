@@ -323,7 +323,7 @@ def get_raw_data(args):
     data_list=[]
     step_id = 0
     episode_index = 0 # not match the episode_index in dataset. But one index refer one specific episode always.
-    max_step = 10
+    max_step = 1000
     while True:
         item = train_dataset.__getitem__(index=0,episode_index=episode_index, step_id=step_id)
         data_list.append(item)
@@ -534,11 +534,30 @@ if __name__ == "__main__":
     args = parse_args()
     data_list, total_step= get_raw_data(args)
     data_dict = {}
+    data_dict['total_timesteps'] = data_list[0]["total_timesteps"]
+    data_dict['ctrl_freq'] = data_list[0]["ctrl_freq"]
+    data_dict['total_timesteps'] = data_list[0]["total_timesteps"]
+    data_dict['dataset_idx'] = data_list[0]["dataset_idx"]
+
     for i in range(total_step):
+        
         data_dict[f'states_{i}'] = data_list[i]["states"]
         data_dict[f'actions_{i}'] = data_list[i]["actions"]
+        data_dict[f'step_id_{i}'] = data_list[i]["step_id"]
+        
+        # very large; total maybe 3 GB
+        # data_dict[f'images_0_{i}'] = data_list[i]["images"][0]
+        # data_dict[f'images_1_{i}'] = data_list[i]["images"][1]
+        # data_dict[f'images_2_{i}'] = data_list[i]["images"][2]
+        # data_dict[f'images_3_{i}'] = data_list[i]["images"][3]
+        # data_dict[f'images_4_{i}'] = data_list[i]["images"][4]
+        # data_dict[f'images_5_{i}'] = data_list[i]["images"][5]
 
-    np.savez(os.path.join(RDT_ROOT_DIR,'data/data_processed/data.npz'), **data_dict)
+        # data_dict[f'state_elem_mask_{i}'] = data_list[i]["state_elem_mask"]
+        # data_dict[f'state_norm_{i}'] = data_list[i]["state_norm"]
+
+    np.savez(os.path.join(RDT_ROOT_DIR,'data/data_processed/data_0.npz'), **data_dict)
+    print("successfully save data.npz!")
     
     
     # load .npz file
