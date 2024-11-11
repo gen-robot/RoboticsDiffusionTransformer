@@ -323,16 +323,17 @@ def get_raw_data(args):
     data_list=[]
     step_id = 0
     episode_index = 0 # not match the episode_index in dataset. But one index refer one specific episode always.
+    max_step = 10
     while True:
         item = train_dataset.__getitem__(index=0,episode_index=episode_index, step_id=step_id)
         data_list.append(item)
         print("appending data of epsiode",episode_index,": ",item["step_id"],"/",item["total_timesteps"])
         print("Loading episode path: ", item['episode_path'])       
         step_id += 1
-        if(step_id>item["total_timesteps"]):
-            return data_list
-        if step_id>10:
-            return data_list
+        if(step_id>=item["total_timesteps"]):
+            return data_list, item["total_timesteps"]
+        if step_id>=max_step:
+            return data_list, max_step
     
     
 class MyVLAConsumerDataset(VLAConsumerDataset):
@@ -531,21 +532,22 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
 
 if __name__ == "__main__":
     args = parse_args()
-    data_list = get_raw_data(args)
-    # for data in data_list:
-    #     data
-    #     import pdb;pdb.set_trace()
-    #     pass
+    data_list, total_step= get_raw_data(args)
+    data_dict = {}
+    for i in range(total_step):
+        data_dict[f'states_{i}'] = data_list[i]["states"]
+        data_dict[f'actions_{i}'] = data_list[i]["actions"]
+
+    np.savez(os.path.join(RDT_ROOT_DIR,'data/data_processed/data.npz'), **data_dict)
     
-    # directory = os.path.join(RDT_ROOT_DIR,"data/data_processed")
-    # filename = "output.json"
-
-    # if not os.path.exists(directory):
-    #     os.makedirs(directory)
-
-    # t0 = time.time()
-    # filepath = os.path.join(directory, filename)
-    # with open(filepath, "w") as f:
-    #     json.dump(data_list, f, indent=4)
-    # print("write json file time: ",time.time()-t0,"s")
-    # print(f"数据已保存到 {filepath}")
+    
+    # load .npz file
+    # DATA_SIZE=10
+    # import numpy as np
+    # data = np.load('data/data_processed/data.npz')
+    # states=[]
+    # actions=[]
+    # for i in range(DATA_SIZE):
+    #     states.append(data[f'states_{i}'])
+    #     actions.append(data[f'actions_{i}'])
+    # print(states[0])
