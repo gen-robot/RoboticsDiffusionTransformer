@@ -275,24 +275,6 @@ def parse_args(input_args=None):
 
 
 
-
-
-def convert_tensors(obj):
-    if isinstance(obj, torch.Tensor):
-        # 如果是 Tensor，则转换为 list
-        return obj.tolist()
-    elif isinstance(obj, dict):
-        # 如果是字典，递归处理每个键值对
-        return {key: convert_tensors(value) for key, value in obj.items()}
-    elif isinstance(obj, list):
-        # 如果是列表，递归处理每个元素
-        return [convert_tensors(item) for item in obj]
-    else:
-        # 对于其他类型，直接返回
-        return obj
-
-
-
 def get_raw_data(args):
     data_list=[]
     
@@ -339,40 +321,14 @@ def get_raw_data(args):
         # persistent_workers=True
     )
     
-    print(type(train_dataloader))
-
-    index = 0
-    total_index = 100
-    for data in train_dataset:
-        print("append index: ", index, "/", total_index)
-        index+=1
-        data_list.append(data)
-        if index>total_index:
-            break
-        # print(type(data))
-        # print(data.keys())
-        # print(data["actions"])
-        # print(type(data["actions"]))
-        # "data name"
-        # "dada_idx"
-        # "ctrl_freq"
-        # "actions"
-        # "state_elem_mask"
-        # "state_norm"
-        # "images"
-    # print(data_list)
-    
-    
-    ## use numpy format to store
-    print("convert data_list to JSON serializable")
-    t0 = time.time()
-    data_list = convert_tensors(data_list)
-    
-    print("converting time: ", time.time()-t0,"s")
+    for step_id in range(0,10):
+        item = train_dataset.__getitem__(0, step_id)
+        data_list.append(item)
+        print("appending data: ",item["step_id"],"/",item["total_timesteps"])       
+        step_id += 1
     return data_list
     
     
-
 class MyVLAConsumerDataset(VLAConsumerDataset):
     """A vision-languange-action Dataset for supervised training.
     This dataset will load data from the buffer directory.
@@ -388,7 +344,7 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
         image_size=None,
         auto_adjust_image_brightness=False,
         image_aug=False,
-        dataset_type='pretrain',
+        dataset_type='finetune',
         cond_mask_prob=0.1,
         cam_ext_mask_prob=-1.0,
         state_noise_snr=None,
@@ -402,13 +358,30 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
         super().__init__(**all_kwargs)
 
 
-    def __getitem__(self, index):
+    def __getitem__(self, index, step_id):
         # For robustness, we will try to load the data until we succeed
+        '''
+            return
+                data_dict={
+                    dataset_name
+                    step_id
+                    total_timesteps
+                    instruction
+                    dataset_idx
+                    ctrl_freq
+                    states
+                    actions
+                    state_elem_mask
+                    state_norm
+                    images
+                }
+        '''
         while True:
             data_dict = None
             try:
                 if self.use_hdf5:
-                    res = self.hdf5_dataset.get_item()
+                    # index indicates the index of the episode, step_id indicates the id of steps of this episode.
+                    res = self.hdf5_dataset.get_item(step_id=step_id, index=0) # not use state_only
                     content = res['meta']
                     states = res['state']
                     actions = res['actions']
@@ -427,8 +400,11 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
                     state_std, state_mean, state_norm) = self._safe_load(index)
                 
                 data_dict = {}
-                data_dict['dataset_name'] = content['dataset_name']
-                data_dict['data_idx'] = self.dataset_name2id[data_dict['dataset_name']]
+                data_dict['dataset_name'] = content['dataset_name'] # this have 
+                data_dict['step_id'] = content['step_id']
+                data_dict['total_timesteps'] = content['#steps']
+                data_dict['instruction'] = content['instruction']
+                data_dict['dataset_idx'] = self.dataset_name2id[data_dict['dataset_name']]
                 data_dict['ctrl_freq'] = self.control_freq[data_dict['dataset_name']] \
                     if random.random() > self.cond_mask_prob else 0
                 
@@ -521,12 +497,12 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
                 #     data_dict["lang_embed"] = torch.load(content["instruction"]) \
                 #         if random.random() > self.cond_mask_prob else self.empty_lang_embed
                 
-                for k, v in data_dict.items():
-                    if isinstance(v, np.ndarray):
-                        data_dict[k] = torch.from_numpy(v)
+                # for k, v in data_dict.items():
+                #     if isinstance(v, np.ndarray):
+                #         data_dict[k] = torch.from_numpy(v)
 
-                for k, v in data_dict.items():
-                    assert not isinstance(v, np.ndarray), f"key: {k}, value: {v}"
+                # for k, v in data_dict.items():
+                #     assert not isinstance(v, np.ndarray), f"key: {k}, value: {v}"
                         # data_dict[k] = torch.from_numpy(v)
         
                 return data_dict
@@ -545,14 +521,14 @@ if __name__ == "__main__":
     args = parse_args()
     data_list = get_raw_data(args)
     
-    directory = os.path.join(RDT_ROOT_DIR,"data/data_processed")
-    filename = "output.json"
+    # directory = os.path.join(RDT_ROOT_DIR,"data/data_processed")
+    # filename = "output.json"
 
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+    # if not os.path.exists(directory):
+    #     os.makedirs(directory)
 
-    t0 = time.time()
-    filepath = os.path.join(directory, filename)
+    # t0 = time.time()
+    # filepath = os.path.join(directory, filename)
     # with open(filepath, "w") as f:
     #     json.dump(data_list, f, indent=4)
     # print("write json file time: ",time.time()-t0,"s")
