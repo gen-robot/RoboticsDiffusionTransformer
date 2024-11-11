@@ -276,7 +276,6 @@ def parse_args(input_args=None):
 
 
 def get_raw_data(args):
-    data_list=[]
     
     # args.config_path = "configs/base.yaml"
     # args.pretrained_vision_encoder_name_or_path = "google/siglip-so400m-patch14-384"
@@ -321,12 +320,19 @@ def get_raw_data(args):
         # persistent_workers=True
     )
     
-    for step_id in range(0,10):
-        item = train_dataset.__getitem__(0, step_id)
+    data_list=[]
+    step_id = 0
+    episode_index = 0 # not match the episode_index in dataset. But one index refer one specific episode always.
+    while True:
+        item = train_dataset.__getitem__(index=0,episode_index=episode_index, step_id=step_id)
         data_list.append(item)
-        print("appending data: ",item["step_id"],"/",item["total_timesteps"])       
+        print("appending data of epsiode",episode_index,": ",item["step_id"],"/",item["total_timesteps"])
+        print("Loading episode path: ", item['episode_path'])       
         step_id += 1
-    return data_list
+        if(step_id>item["total_timesteps"]):
+            return data_list
+        if step_id>10:
+            return data_list
     
     
 class MyVLAConsumerDataset(VLAConsumerDataset):
@@ -358,22 +364,26 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
         super().__init__(**all_kwargs)
 
 
-    def __getitem__(self, index, step_id):
+    def __getitem__(self, index, episode_index, step_id):
         # For robustness, we will try to load the data until we succeed
         '''
             return
                 data_dict={
-                    dataset_name
-                    step_id
-                    total_timesteps
-                    instruction
-                    dataset_idx
-                    ctrl_freq
-                    states
-                    actions
-                    state_elem_mask
-                    state_norm
-                    images
+                    
+                    dataset_name -> string
+                    instruction -> string
+                    episode_path -> string
+
+                    step_id -> int 
+                    total_timesteps -> int
+                    dataset_idx -> int
+                    ctrl_freq -> int
+                    
+                    states  -> shape(1, 128)
+                    actions -> shape(64,128)
+                    state_elem_mask -> shape(128,)
+                    state_norm -> shape(128,1)
+                    images -> list with 6 part.each part is in shape(3,384,384)
                 }
         '''
         while True:
@@ -381,7 +391,7 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
             try:
                 if self.use_hdf5:
                     # index indicates the index of the episode, step_id indicates the id of steps of this episode.
-                    res = self.hdf5_dataset.get_item(step_id=step_id, index=0) # not use state_only
+                    res, file_path = self.hdf5_dataset.get_item(step_id=step_id, index=episode_index) # not use state_only
                     content = res['meta']
                     states = res['state']
                     actions = res['actions']
@@ -405,6 +415,7 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
                 data_dict['total_timesteps'] = content['#steps']
                 data_dict['instruction'] = content['instruction']
                 data_dict['dataset_idx'] = self.dataset_name2id[data_dict['dataset_name']]
+                data_dict['episode_path'] = file_path
                 data_dict['ctrl_freq'] = self.control_freq[data_dict['dataset_name']] \
                     if random.random() > self.cond_mask_prob else 0
                 
@@ -490,6 +501,7 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
                     image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
                     preprocessed_images.append(image)
                 data_dict["images"] = preprocessed_images
+                data_dict["images"] = [tensor.cpu().numpy() if isinstance(tensor, torch.Tensor) else tensor for tensor in data_dict["images"]]
 
                 # if self.use_precomp_lang_embed:
                 #     if content["instruction"][-1] == ".":
@@ -497,13 +509,13 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
                 #     data_dict["lang_embed"] = torch.load(content["instruction"]) \
                 #         if random.random() > self.cond_mask_prob else self.empty_lang_embed
                 
-                # for k, v in data_dict.items():
-                #     if isinstance(v, np.ndarray):
-                #         data_dict[k] = torch.from_numpy(v)
+                for k, v in data_dict.items():
+                    if isinstance(v, torch.Tensor):
+                        data_dict[k] = v.cpu().numpy()
 
-                # for k, v in data_dict.items():
-                #     assert not isinstance(v, np.ndarray), f"key: {k}, value: {v}"
-                        # data_dict[k] = torch.from_numpy(v)
+                for k, v in data_dict.items():
+                    assert not isinstance(v, torch.Tensor), f"key: {k}, value: {v}"
+                    # data_dict[k] = torch.from_numpy(v)
         
                 return data_dict
             except BaseException as e:
@@ -520,6 +532,10 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
 if __name__ == "__main__":
     args = parse_args()
     data_list = get_raw_data(args)
+    # for data in data_list:
+    #     data
+    #     import pdb;pdb.set_trace()
+    #     pass
     
     # directory = os.path.join(RDT_ROOT_DIR,"data/data_processed")
     # filename = "output.json"

@@ -342,11 +342,11 @@ class MyHDF5VLADataset(HDF5VLADataset):
                 file_path = np.random.choice(self.file_paths, p=self.episode_sample_weights)
             else:
                 file_path = self.file_paths[index]
-            print("hdf5 file path:", file_path)
+            # import pdb;pdb.set_trace()
             valid, sample = self.parse_hdf5_file(file_path,step_id) \
                 if not state_only else self.parse_hdf5_file_state_only(file_path)
             if valid:
-                return sample
+                return sample, file_path
             else:
                 index = np.random.randint(0, len(self.file_paths))
     
@@ -414,6 +414,7 @@ class MyHDF5VLADataset(HDF5VLADataset):
             # We have 1/3 prob to use original instruction,
             # 1/3 to use simplified instruction,
             # and 1/3 to use expanded instruction.
+            # TODO -> Choose the instructions you like.!!!
             instruction_type = np.random.choice([
                 'instruction', 'simplified_instruction', 'expanded_instruction'])
             instruction = instruction_dict[instruction_type]
@@ -440,7 +441,6 @@ class MyHDF5VLADataset(HDF5VLADataset):
             
             # Parse the state and action
             state = qpos[step_id:step_id+1]
-            import pdb;pdb.set_trace()
             state_std = np.std(qpos, axis=0)
             state_mean = np.mean(qpos, axis=0)
             state_norm = np.sqrt(np.mean(qpos**2, axis=0))
