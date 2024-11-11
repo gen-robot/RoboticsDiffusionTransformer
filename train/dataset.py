@@ -14,7 +14,7 @@ from PIL import Image
 import transformers
 
 from data.filelock import FileLock
-from data.hdf5_vla_dataset import HDF5VLADataset
+from data.hdf5_vla_dataset import HDF5VLADataset,MyHDF5VLADataset
 from train.image_corrupt import image_corrupt
 
 
@@ -125,7 +125,8 @@ class VLAConsumerDataset(Dataset):
         self.use_hdf5 = use_hdf5
         self.hdf5_dataset = None
         if use_hdf5:
-            self.hdf5_dataset = HDF5VLADataset()
+            self.hdf5_dataset = MyHDF5VLADataset()
+            # self.hdf5_dataset = HDF5VLADataset()
         self.use_precomp_lang_embed = use_precomp_lang_embed
         if use_precomp_lang_embed:
             self.empty_lang_embed = torch.load("data/empty_lang_embed.pt")
