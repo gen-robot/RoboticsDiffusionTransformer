@@ -419,6 +419,7 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
                 data_dict['ctrl_freq'] = self.control_freq[data_dict['dataset_name']] \
                     if random.random() > self.cond_mask_prob else 0
                 
+                # add noise so the state will be weird
                 if self.state_noise_snr is not None:
                     states += np.random.normal(
                         0.0, state_std / np.sqrt(10 ** (self.state_noise_snr / 10)), 
@@ -555,13 +556,13 @@ if __name__ == "__main__":
         # data_dict[f'state_elem_mask_{i}'] = data_list[i]["state_elem_mask"]
         # data_dict[f'state_norm_{i}'] = data_list[i]["state_norm"]
 
-    i = 0
-    saving_path = os.path.join(RDT_ROOT_DIR, 'data', 'data_processed', 'data_0.npz')
-    while os.path.exists(saving_path):
-        i += 1
-        saving_path = os.path.join(RDT_ROOT_DIR, 'data', 'data_processed', f'data_{i}.npz')
-    np.savez(saving_path, **data_dict)
-    print(f"Successfully saved data_{i}.npz!")
+    # i = 0
+    # saving_path = os.path.join(RDT_ROOT_DIR, 'data', 'data_processed', 'data_0.npz')
+    # while os.path.exists(saving_path):
+    #     i += 1
+    #     saving_path = os.path.join(RDT_ROOT_DIR, 'data', 'data_processed', f'data_{i}.npz')
+    # np.savez(saving_path, **data_dict)
+    # print(f"Successfully saved data_{i}.npz!")
     
     # load .npz file
     # DATA_SIZE=10

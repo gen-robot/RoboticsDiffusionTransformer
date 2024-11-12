@@ -290,6 +290,32 @@ class HDF5VLADataset:
                [[1, 1, 1, 1, 1, 1, 11.8997, 1, 1, 1, 1, 1, 1, 13.9231]] 
             )
             
+            # # test code
+            # target_qpos = f['action'][:] / np.array(
+            #    [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]] 
+            # )
+            # max_l = target_qpos[0][6]
+            # min_l = target_qpos[0][6]
+            # max_r = target_qpos[0][13]
+            # min_r = target_qpos[0][13]
+            # not_l= 0
+            # not_r = 0
+            # for i in range(322):
+            #     if(target_qpos[i][6]>max_l):
+            #         max_l = target_qpos[i][6]
+            #     elif(target_qpos[i][6]<min_l):
+            #         min_l = target_qpos[i][6]
+            #     else:
+            #         not_l+=1
+                
+            #     if(target_qpos[i][13]>max_r):
+            #         max_r = target_qpos[i][13]
+            #     elif(target_qpos[i][13]<min_r):
+            #         min_r = target_qpos[i][13] 
+            #     else:
+            #         not_r+=1
+            # import pdb;pdb.set_trace()
+       
             # Parse the state and action
             state = qpos[first_idx-1:]
             action = target_qpos[first_idx-1:]
