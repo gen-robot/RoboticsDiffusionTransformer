@@ -1,5 +1,3 @@
-
-
 import traceback
 import time
 import os
@@ -327,6 +325,7 @@ def get_raw_data(args):
     while True:
         item = train_dataset.__getitem__(index=0,episode_index=episode_index, step_id=step_id)
         data_list.append(item)
+        print("instruction: ", item["instruction"])
         print("appending data of epsiode",episode_index,": ",item["step_id"],"/",item["total_timesteps"])
         print("Loading episode path: ", item['episode_path'])       
         step_id += 1
@@ -381,7 +380,7 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
                     ctrl_freq -> int
                     
                     states  -> shape(1, 128)
-                    actions -> shape(64,128)
+                    actions -> shape(chunksize set in configs/base.yaml, 128), the chunksize is for predict
                     state_elem_mask -> shape(128,)
                     state_norm -> shape(128,1)
                     images -> list with 6 part.each part is in shape(3,384,384)
