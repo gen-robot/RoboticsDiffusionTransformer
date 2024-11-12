@@ -417,6 +417,7 @@ class MyHDF5VLADataset(HDF5VLADataset):
             # TODO -> Choose the instructions you like.!!!
             instruction_type = np.random.choice([
                 'instruction', 'simplified_instruction', 'expanded_instruction'])
+            instruction_type = 'instruction' #TODO
             instruction = instruction_dict[instruction_type]
             if isinstance(instruction, list):
                 instruction = np.random.choice(instruction)
@@ -430,7 +431,6 @@ class MyHDF5VLADataset(HDF5VLADataset):
                 "step_id": step_id,
                 "instruction": instruction
             }
-            
             # Rescale gripper to [0, 1]
             qpos = qpos / np.array(
                [[1, 1, 1, 1, 1, 1, 4.7908, 1, 1, 1, 1, 1, 1, 4.7888]] 
@@ -466,7 +466,7 @@ class MyHDF5VLADataset(HDF5VLADataset):
                 ] + [
                     STATE_VEC_IDX_MAPPING["right_gripper_open"]
                 ]
-                uni_vec = np.zeros(values.shape[:-1] + (self.STATE_DIM,))
+                uni_vec = np.zeros(values.shape[:-1] + (self.STATE_DIM,)) # statedim = 128
                 uni_vec[..., UNI_STATE_INDICES] = values
                 return uni_vec
             
