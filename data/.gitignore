@@ -1,2 +1,4 @@
 # Ignore data files
 rdt-ft-data/
+datasets/
+data_processed/
