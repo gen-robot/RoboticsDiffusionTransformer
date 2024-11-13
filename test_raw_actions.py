@@ -317,7 +317,7 @@ def get_raw_data(args):
         # pin_memory=True,
         # persistent_workers=True
     )
-    
+
     data_list=[]
     step_id = 0
     episode_index = 0 # not match the episode_index in dataset. But one index refer one specific episode always.
@@ -325,9 +325,10 @@ def get_raw_data(args):
     while True:
         item = train_dataset.__getitem__(index=0,episode_index=episode_index, step_id=step_id)
         data_list.append(item)
-        print("instruction: ", item["instruction"])
-        print("appending data of epsiode",episode_index,": ",item["step_id"],"/",item["total_timesteps"])
-        print("Loading episode path: ", item['episode_path'])       
+        if step_id%10==0:
+            print("instruction: ", item["instruction"])
+            print("appending data of epsiode",episode_index,": ",item["step_id"],"/",item["total_timesteps"])
+            print("Loading episode path: ", item['episode_path'])       
         step_id += 1
         if(step_id>=item["total_timesteps"]):
             return data_list, item["total_timesteps"]
@@ -530,13 +531,82 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
                 index = (index + 1) % len(self)
 
 
+def get_dataset():
+    '''
+        data:
+            'states'
+            'actions'
+            'step_id'
+            'images' -> shape(6,)
+            'state_elem_mask'
+            'state_norm'
+            'instruction'
+            'total_timesteps'
+            'ctrl_freq'
+            'dataset_idx'
+    '''
+    class Config:
+        def __init__(self):
+            self.config_path = os.path.join(RDT_ROOT_DIR,"configs/base.yaml")
+            self.pretrained_vision_encoder_name_or_path = os.path.join(RDT_ROOT_DIR,"google/siglip-so400m-patch14-384")
+            self.dataset_type = "finetune"
+            self.image_aug = True
+            self.cond_mask_prob = 0.1
+            self.cam_ext_mask_prob = -1.0
+            self.state_noise_snr = 40
+            self.load_from_hdf5 = True
+            self.precomp_lang_embed = True
+    
+    args = Config()
+    data_list, total_step= get_raw_data(args)
+    data_dict = {}
+
+    data_dict['states']=[]
+    data_dict['actions']=[]
+    data_dict['step_id']=[]
+    data_dict['images']=[[],[],[],[],[],[]]
+    data_dict['images'][0]=[]
+    data_dict['images'][1]=[]
+    data_dict['images'][2]=[]
+    data_dict['images'][3]=[]
+    data_dict['images'][4]=[]
+    data_dict['images'][5]=[]
+
+    data_dict['state_elem_mask']=[]
+    data_dict['state_norm']=[]
+
+    # not save .npz
+    data_dict['instruction'] = data_list[0]["instruction"]
+    # above can not be saved as npz.
+    data_dict['total_timesteps'] = data_list[0]["total_timesteps"]
+    data_dict['ctrl_freq'] = data_list[0]["ctrl_freq"] # defined in configs/dataset_control_freq.json
+    data_dict['dataset_idx'] = data_list[0]["dataset_idx"]
+
+    for i in range(total_step):
+
+        data_dict['states'].append(data_list[i]["states"])
+        data_dict['actions'].append(data_list[i]["actions"])
+        data_dict['step_id'].append(data_list[i]["step_id"])
+        
+        # very large; total maybe 3 GB
+        data_dict['images'][0].append(data_list[i]["images"][0])
+        data_dict['images'][1].append(data_list[i]["images"][1])
+        data_dict['images'][2].append(data_list[i]["images"][2])
+        data_dict['images'][3].append(data_list[i]["images"][3])
+        data_dict['images'][4].append(data_list[i]["images"][4])
+        data_dict['images'][5].append(data_list[i]["images"][5])
+
+        data_dict['state_elem_mask'].append(data_list[i]["state_elem_mask"])
+        data_dict['state_norm'].append(data_list[i]["state_norm"])
+
+    return data_dict
+
 if __name__ == "__main__":
     args = parse_args()
     data_list, total_step= get_raw_data(args)
     data_dict = {}
     data_dict['total_timesteps'] = data_list[0]["total_timesteps"]
     data_dict['ctrl_freq'] = data_list[0]["ctrl_freq"]
-    data_dict['total_timesteps'] = data_list[0]["total_timesteps"]
     data_dict['dataset_idx'] = data_list[0]["dataset_idx"]
 
     for i in range(total_step):

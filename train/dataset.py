@@ -99,11 +99,14 @@ class VLAConsumerDataset(Dataset):
         super(VLAConsumerDataset, self).__init__()
         
         # Load the control frequency for each dataset
-        with open("configs/dataset_control_freq.json", 'r') as fp:
+        # with open("configs/dataset_control_freq.json", 'r') as fp:
+        with open("embodied_agent/third_party/vla/rdt/configs/dataset_control_freq.json", 'r') as fp:
             self.control_freq = json.load(fp)
         # Load the dataset names
-        dataset_names_cfg = 'configs/pretrain_datasets.json' \
-            if dataset_type == 'pretrain' else 'configs/finetune_datasets.json'
+        # dataset_names_cfg = 'configs/pretrain_datasets.json' \
+        #     if dataset_type == 'pretrain' else 'configs/finetune_datasets.json'
+        dataset_names_cfg = 'embodied_agent/third_party/vla/rdt/configs/pretrain_datasets.json' \
+            if dataset_type == 'pretrain' else 'embodied_agent/third_party/vla/rdt/configs/finetune_datasets.json'
         with open(dataset_names_cfg, 'r') as file:
             DATASET_NAMES = json.load(file)
         # Create the mapping between dataset name and id
@@ -129,10 +132,12 @@ class VLAConsumerDataset(Dataset):
             # self.hdf5_dataset = HDF5VLADataset()
         self.use_precomp_lang_embed = use_precomp_lang_embed
         if use_precomp_lang_embed:
-            self.empty_lang_embed = torch.load("data/empty_lang_embed.pt")
+            # self.empty_lang_embed = torch.load("data/empty_lang_embed.pt")
+            self.empty_lang_embed = torch.load("embodied_agent/third_party/vla/rdt/data/empty_lang_embed.pt")
         
         # Load dataset stat
-        with open("configs/dataset_stat.json", 'r') as f:
+        # with open("configs/dataset_stat.json", 'r') as f:
+        with open("embodied_agent/third_party/vla/rdt/configs/dataset_stat.json", 'r') as f:
             dataset_stat = json.load(f)
         self.dataset_stat = dataset_stat
         

@@ -19,8 +19,10 @@ class HDF5VLADataset:
         # [Modify] The path to the HDF5 dataset directory
         # Each HDF5 file contains one episode
 
-        HDF5_DIR = "data/datasets/close_laptop/"
+        # HDF5_DIR = "data/datasets/close_laptop/"
+        HDF5_DIR = "embodied_agent/third_party/vla/rdt/data/datasets/close_laptop/"        
         self.DATASET_NAME = "close_laptop"
+
         # HDF5_DIR = "data/datasets/wash_cup_1/"
         # self.DATASET_NAME = "wash_cup_1"
         
@@ -31,7 +33,8 @@ class HDF5VLADataset:
                 self.file_paths.append(file_path)
                 
         # Load the config
-        with open('configs/base.yaml', 'r') as file:
+        # with open('configs/base.yaml', 'r') as file:
+        with open('embodied_agent/third_party/vla/rdt/configs/base.yaml', 'r') as file:
             config = yaml.safe_load(file)
         self.CHUNK_SIZE = config['common']['action_chunk_size']
         self.IMG_HISORY_SIZE = config['common']['img_history_size']
