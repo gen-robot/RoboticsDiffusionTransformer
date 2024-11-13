@@ -411,6 +411,12 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
                     state_std, state_mean, state_norm) = self._safe_load(index)
                 
                 data_dict = {}
+                ## add
+                data_dict['images_raw']={'cam_high':res['cam_high'],
+                                         'cam_right_wrist':res['cam_right_wrist'],
+                                         'cam_left_wrist':res['cam_left_wrist'],
+                                         }
+                ## add
                 data_dict['dataset_name'] = content['dataset_name'] # this have 
                 data_dict['step_id'] = content['step_id']
                 data_dict['total_timesteps'] = content['#steps']
@@ -446,7 +452,7 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
                     self.image_processor.size["height"], 
                     self.image_processor.size["width"], 3), dtype=np.uint8
                 ) * background_color
-                
+
                 image_metas = list(self.pairwise(image_metas))
                 mask_probs = [self.cond_mask_prob] * self.num_cameras
                 if self.cam_ext_mask_prob >= 0.0:
@@ -504,7 +510,6 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
                     preprocessed_images.append(image)
                 data_dict["images"] = preprocessed_images
                 data_dict["images"] = [tensor.cpu().numpy() if isinstance(tensor, torch.Tensor) else tensor for tensor in data_dict["images"]]
-
                 # if self.use_precomp_lang_embed:
                 #     if content["instruction"][-1] == ".":
                 #         content["instruction"] = content["instruction"][:-1]
@@ -530,10 +535,13 @@ class MyVLAConsumerDataset(VLAConsumerDataset):
                 # Try incresing the index
                 index = (index + 1) % len(self)
 
-def get_data_from_dataset(is_read_from_file: bool, file_name: str):
+def get_data_from_dataset(is_read_from_file: bool, file_name=None):
     if is_read_from_file:
-        data_dict = np.load(os.path.join(RDT_ROOT_DIR, 'data', 'data_processed', file_name))
-        return data_dict
+        if isinstance(file_name,str):
+            data_dict = np.load(os.path.join(RDT_ROOT_DIR, 'data', 'data_processed', file_name),allow_pickle=True,mmap_mode='r')
+            return data_dict
+        else:
+            assert 0, "you should input a string for file name"
     else:
         '''
             data:
@@ -575,7 +583,7 @@ def get_data_from_dataset(is_read_from_file: bool, file_name: str):
         data_dict['images'][3]=[]
         data_dict['images'][4]=[]
         data_dict['images'][5]=[]
-
+        data_dict['images_raw']=[]
         data_dict['state_elem_mask']=[]
         data_dict['state_norm']=[]
 
@@ -599,55 +607,16 @@ def get_data_from_dataset(is_read_from_file: bool, file_name: str):
             data_dict['images'][3].append(data_list[i]["images"][3])
             data_dict['images'][4].append(data_list[i]["images"][4])
             data_dict['images'][5].append(data_list[i]["images"][5])
-
+            data_dict['images_raw'].append(data_list[i]["images_raw"])
+            # data_dict['images_raw'] = np.array(data_dict['images_raw'], dtype=np.float32)
             data_dict['state_elem_mask'].append(data_list[i]["state_elem_mask"])
             data_dict['state_norm'].append(data_list[i]["state_norm"])
 
         return data_dict
 
 if __name__ == "__main__":
-    args = parse_args()
-    data_list, total_step= get_raw_data(args)
-    data_dict = {}
-
-    data_dict['states']=[]
-    data_dict['actions']=[]
-    data_dict['step_id']=[]
-    data_dict['images']=[[],[],[],[],[],[]]
-    data_dict['images'][0]=[]
-    data_dict['images'][1]=[]
-    data_dict['images'][2]=[]
-    data_dict['images'][3]=[]
-    data_dict['images'][4]=[]
-    data_dict['images'][5]=[]
-
-    data_dict['state_elem_mask']=[]
-    data_dict['state_norm']=[]
-
-    # not save .npz
-    data_dict['instruction'] = data_list[0]["instruction"]
-    # above can not be saved as npz.
-    data_dict['total_timesteps'] = data_list[0]["total_timesteps"]
-    data_dict['ctrl_freq'] = data_list[0]["ctrl_freq"] # defined in configs/dataset_control_freq.json
-    data_dict['dataset_idx'] = data_list[0]["dataset_idx"]
-
-    for i in range(total_step):
-
-        data_dict['states'].append(data_list[i]["states"])
-        data_dict['actions'].append(data_list[i]["actions"])
-        data_dict['step_id'].append(data_list[i]["step_id"])
-        
-        # very large; total maybe 3.2 GB
-        data_dict['images'][0].append(data_list[i]["images"][0])
-        data_dict['images'][1].append(data_list[i]["images"][1])
-        data_dict['images'][2].append(data_list[i]["images"][2])
-        data_dict['images'][3].append(data_list[i]["images"][3])
-        data_dict['images'][4].append(data_list[i]["images"][4])
-        data_dict['images'][5].append(data_list[i]["images"][5])
-
-        data_dict['state_elem_mask'].append(data_list[i]["state_elem_mask"])
-        data_dict['state_norm'].append(data_list[i]["state_norm"])
-
+    data_dict = get_data_from_dataset(is_read_from_file=False)
+    import pdb;pdb.set_trace()
     i = 0
     saving_path = os.path.join(RDT_ROOT_DIR, 'data', 'data_processed', 'data_0.npz')
     while os.path.exists(saving_path):
@@ -656,3 +625,4 @@ if __name__ == "__main__":
     np.savez(saving_path, **data_dict)
     print(f"Successfully saved data_{i}.npz!")
 
+# data_dict["images_raw"][0]['cam_high'][1]
