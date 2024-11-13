@@ -1,3 +1,2 @@
 # Ignore data files
-datasets
-data_processed
+rdt-ft-data/
