@@ -72,7 +72,7 @@ def process_hdf5_dataset(vla_dataset):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--save_path', type=str, 
-                        default="configs/dataset_stat.json", 
+                        default="embodied_agent/third_party/vla/rdt/configs/dataset_stat.json", 
                         help="JSON file path to save the dataset statistics.")
     parser.add_argument('--skip_exist', action='store_true', 
                         help="Whether to skip the existing dataset statistics.")

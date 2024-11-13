@@ -53,7 +53,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--config_path",
         type=str,
-        default="configs/base.yaml",
+        default=os.path.join(RDT_ROOT_DIR,"configs/base.yaml"),
         help="Path to the configuration file. Default is `configs/base.yaml`.",
     )
 
@@ -66,7 +66,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--pretrained_vision_encoder_name_or_path",
         type=str,
-        default="google/siglip-so400m-patch14-384",
+        default=os.path.join(RDT_ROOT_DIR,"google/siglip-so400m-patch14-384"),
         help="Pretrained vision encoder name or path if not the same as model_name",
     )
     
@@ -325,7 +325,7 @@ def get_raw_data(args):
     while True:
         item = train_dataset.__getitem__(index=0,episode_index=episode_index, step_id=step_id)
         data_list.append(item)
-        if step_id%10==0:
+        if step_id%20==0:
             print("instruction: ", item["instruction"])
             print("appending data of epsiode",episode_index,": ",item["step_id"],"/",item["total_timesteps"])
             print("Loading episode path: ", item['episode_path'])       
@@ -558,6 +558,7 @@ def get_dataset():
             self.precomp_lang_embed = True
     
     args = Config()
+
     data_list, total_step= get_raw_data(args)
     data_dict = {}
 
@@ -605,42 +606,50 @@ if __name__ == "__main__":
     args = parse_args()
     data_list, total_step= get_raw_data(args)
     data_dict = {}
+
+    data_dict['states']=[]
+    data_dict['actions']=[]
+    data_dict['step_id']=[]
+    data_dict['images']=[[],[],[],[],[],[]]
+    data_dict['images'][0]=[]
+    data_dict['images'][1]=[]
+    data_dict['images'][2]=[]
+    data_dict['images'][3]=[]
+    data_dict['images'][4]=[]
+    data_dict['images'][5]=[]
+
+    data_dict['state_elem_mask']=[]
+    data_dict['state_norm']=[]
+
+    # not save .npz
+    data_dict['instruction'] = data_list[0]["instruction"]
+    # above can not be saved as npz.
     data_dict['total_timesteps'] = data_list[0]["total_timesteps"]
-    data_dict['ctrl_freq'] = data_list[0]["ctrl_freq"]
+    data_dict['ctrl_freq'] = data_list[0]["ctrl_freq"] # defined in configs/dataset_control_freq.json
     data_dict['dataset_idx'] = data_list[0]["dataset_idx"]
 
     for i in range(total_step):
-        
-        data_dict[f'states_{i}'] = data_list[i]["states"]
-        data_dict[f'actions_{i}'] = data_list[i]["actions"]
-        data_dict[f'step_id_{i}'] = data_list[i]["step_id"]
-        
-        # very large; total maybe 3 GB
-        # data_dict[f'images_0_{i}'] = data_list[i]["images"][0]
-        # data_dict[f'images_1_{i}'] = data_list[i]["images"][1]
-        # data_dict[f'images_2_{i}'] = data_list[i]["images"][2]
-        # data_dict[f'images_3_{i}'] = data_list[i]["images"][3]
-        # data_dict[f'images_4_{i}'] = data_list[i]["images"][4]
-        # data_dict[f'images_5_{i}'] = data_list[i]["images"][5]
 
-        # data_dict[f'state_elem_mask_{i}'] = data_list[i]["state_elem_mask"]
-        # data_dict[f'state_norm_{i}'] = data_list[i]["state_norm"]
+        data_dict['states'].append(data_list[i]["states"])
+        data_dict['actions'].append(data_list[i]["actions"])
+        # data_dict['step_id'].append(data_list[i]["step_id"])
+        
+        # # very large; total maybe 3.2 GB
+        # data_dict['images'][0].append(data_list[i]["images"][0])
+        # data_dict['images'][1].append(data_list[i]["images"][1])
+        # data_dict['images'][2].append(data_list[i]["images"][2])
+        # data_dict['images'][3].append(data_list[i]["images"][3])
+        # data_dict['images'][4].append(data_list[i]["images"][4])
+        # data_dict['images'][5].append(data_list[i]["images"][5])
 
-    # i = 0
-    # saving_path = os.path.join(RDT_ROOT_DIR, 'data', 'data_processed', 'data_0.npz')
-    # while os.path.exists(saving_path):
-    #     i += 1
-    #     saving_path = os.path.join(RDT_ROOT_DIR, 'data', 'data_processed', f'data_{i}.npz')
-    # np.savez(saving_path, **data_dict)
-    # print(f"Successfully saved data_{i}.npz!")
-    
-    # load .npz file
-    # DATA_SIZE=10
-    # import numpy as np
-    # data = np.load('data/data_processed/data.npz')
-    # states=[]
-    # actions=[]
-    # for i in range(DATA_SIZE):
-    #     states.append(data[f'states_{i}'])
-    #     actions.append(data[f'actions_{i}'])
-    # print(states[0])
+        # data_dict['state_elem_mask'].append(data_list[i]["state_elem_mask"])
+        # data_dict['state_norm'].append(data_list[i]["state_norm"])
+
+    i = 0
+    saving_path = os.path.join(RDT_ROOT_DIR, 'data', 'data_processed', 'data_0.npz')
+    while os.path.exists(saving_path):
+        i += 1
+        saving_path = os.path.join(RDT_ROOT_DIR, 'data', 'data_processed', f'data_{i}.npz')
+    np.savez(saving_path, **data_dict)
+    print(f"Successfully saved data_{i}.npz!")
+
