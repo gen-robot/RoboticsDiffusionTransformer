@@ -14,7 +14,7 @@ from PIL import Image
 import transformers
 
 from data.filelock import FileLock
-from data.hdf5_vla_dataset import HDF5VLADataset
+from data.hdf5_vla_dataset import HDF5VLADataset,MyHDF5VLADataset
 from train.image_corrupt import image_corrupt
 
 
@@ -99,11 +99,14 @@ class VLAConsumerDataset(Dataset):
         super(VLAConsumerDataset, self).__init__()
         
         # Load the control frequency for each dataset
-        with open("configs/dataset_control_freq.json", 'r') as fp:
+        # with open("configs/dataset_control_freq.json", 'r') as fp:
+        with open("embodied_agent/third_party/vla/rdt/configs/dataset_control_freq.json", 'r') as fp:
             self.control_freq = json.load(fp)
         # Load the dataset names
-        dataset_names_cfg = 'configs/pretrain_datasets.json' \
-            if dataset_type == 'pretrain' else 'configs/finetune_datasets.json'
+        # dataset_names_cfg = 'configs/pretrain_datasets.json' \
+        #     if dataset_type == 'pretrain' else 'configs/finetune_datasets.json'
+        dataset_names_cfg = 'embodied_agent/third_party/vla/rdt/configs/pretrain_datasets.json' \
+            if dataset_type == 'pretrain' else 'embodied_agent/third_party/vla/rdt/configs/finetune_datasets.json'
         with open(dataset_names_cfg, 'r') as file:
             DATASET_NAMES = json.load(file)
         # Create the mapping between dataset name and id
@@ -125,13 +128,16 @@ class VLAConsumerDataset(Dataset):
         self.use_hdf5 = use_hdf5
         self.hdf5_dataset = None
         if use_hdf5:
-            self.hdf5_dataset = HDF5VLADataset()
+            self.hdf5_dataset = MyHDF5VLADataset()
+            # self.hdf5_dataset = HDF5VLADataset()
         self.use_precomp_lang_embed = use_precomp_lang_embed
         if use_precomp_lang_embed:
-            self.empty_lang_embed = torch.load("data/empty_lang_embed.pt")
+            # self.empty_lang_embed = torch.load("data/empty_lang_embed.pt")
+            self.empty_lang_embed = torch.load("embodied_agent/third_party/vla/rdt/data/empty_lang_embed.pt")
         
         # Load dataset stat
-        with open("configs/dataset_stat.json", 'r') as f:
+        # with open("configs/dataset_stat.json", 'r') as f:
+        with open("embodied_agent/third_party/vla/rdt/configs/dataset_stat.json", 'r') as f:
             dataset_stat = json.load(f)
         self.dataset_stat = dataset_stat
         
@@ -188,7 +194,10 @@ class VLAConsumerDataset(Dataset):
         raise RuntimeError("Failed to load sample.")
 
     def __len__(self) -> int:
-        return self.num_chunks * self.chunk_size
+        if self.use_hdf5:
+            return len(self.hdf5_dataset)
+        else:
+            return self.num_chunks * self.chunk_size
 
     def _safe_load(self, index):
         read_chunk_item_indices = []

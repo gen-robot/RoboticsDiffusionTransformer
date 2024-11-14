@@ -9,18 +9,18 @@ import sys
 import threading
 import time
 import yaml
-from collections import deque
-
-import numpy as np
-import rospy
 import torch
+import cv2
+import numpy as np
+from collections import deque
+from PIL import Image as PImage
+
+import rospy
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
-from PIL import Image as PImage
 from sensor_msgs.msg import Image, JointState
 from std_msgs.msg import Header
-import cv2
 
 from scripts.agilex_model import create_model
 
