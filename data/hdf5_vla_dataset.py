@@ -228,10 +228,7 @@ class HDF5VLADataset:
             def parse_img(key):
                 imgs = []
                 for i in range(max(step_id-self.IMG_HISORY_SIZE+1, 0), step_id+1):
-                    try:
-                        img = f['observations']['images'][key][i]
-                    except:
-                        import pdb; pdb.set_trace()
+                    img = f['observations']['images'][key][i]
                     imgs.append(cv2.imdecode(np.frombuffer(img, np.uint8), cv2.IMREAD_COLOR))
                 imgs = np.stack(imgs)
                 if imgs.shape[0] < self.IMG_HISORY_SIZE:
@@ -266,7 +263,7 @@ class HDF5VLADataset:
                 "actions": actions,
                 "state_indicator": state_indicator,
                 "qpos": qpos[step_id:step_id+1],
-                "raw_action": raw_actions,
+                "raw_actions": raw_actions,
                 "cam_high": cam_high,
                 "cam_high_mask": cam_high_mask,
                 "cam_left_wrist": cam_left_wrist,
