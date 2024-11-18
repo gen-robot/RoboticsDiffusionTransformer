@@ -15,16 +15,18 @@ class HDF5VLADataset:
     This class is used to sample episodes from the embododiment dataset
     stored in HDF5.
     """
-    def __init__(self) -> None:
+    def __init__(self, data_path=None) -> None:
         # [Modify] The path to the HDF5 dataset directory
         # Each HDF5 file contains one episode
-
-        # HDF5_DIR = "data/datasets/close_laptop/"
-        HDF5_DIR = "embodied_agent/third_party/vla/rdt/data/datasets/close_laptop/"        
-        self.DATASET_NAME = "close_laptop"
-
-        # HDF5_DIR = "data/datasets/wash_cup_1/"
-        # self.DATASET_NAME = "wash_cup_1"
+        if(data_path==None):
+            # HDF5_DIR = "data/datasets/close_laptop/"
+            HDF5_DIR = "embodied_agent/third_party/vla/rdt/data/datasets/close_laptop/"        
+            self.DATASET_NAME = "close_laptop"
+            # HDF5_DIR = "data/datasets/wash_cup_1/"
+            # self.DATASET_NAME = "wash_cup_1"
+        else:
+            HDF5_DIR = data_path
+            self.DATASET_NAME = os.path.basename(HDF5_DIR)
         
         self.file_paths = []
         for root, _, files in os.walk(HDF5_DIR):
@@ -352,8 +354,8 @@ class HDF5VLADataset:
             }
             
 class MyHDF5VLADataset(HDF5VLADataset):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self,data_path=None) -> None:
+        super().__init__(data_path=data_path)
     
     # Change the parameter, add step id for parse_hdf5_file using
     def get_item(self, step_id, index: int=None, state_only=False):
@@ -378,7 +380,7 @@ class MyHDF5VLADataset(HDF5VLADataset):
             valid, sample = self.parse_hdf5_file(file_path,step_id) \
                 if not state_only else self.parse_hdf5_file_state_only(file_path)
             if valid:
-                return sample, file_path
+                return sample
             else:
                 index = np.random.randint(0, len(self.file_paths))
     
