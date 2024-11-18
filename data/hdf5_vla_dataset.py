@@ -7,7 +7,8 @@ import yaml
 import cv2
 import numpy as np
 
-from configs.state_vec import STATE_VEC_IDX_MAPPING
+from ..configs.state_vec import STATE_VEC_IDX_MAPPING
+from ..constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
 
 
 class HDF5VLADataset:
@@ -15,28 +16,28 @@ class HDF5VLADataset:
     This class is used to sample episodes from the embododiment dataset
     stored in HDF5.
     """
-    def __init__(self, data_path=None) -> None:
+    def __init__(self, data_path: str=None) -> None:
         # [Modify] The path to the HDF5 dataset directory
         # Each HDF5 file contains one episode
-        if(data_path==None):
-            # HDF5_DIR = "data/datasets/close_laptop/"
-            HDF5_DIR = "embodied_agent/third_party/vla/rdt/data/datasets/close_laptop/"        
-            self.DATASET_NAME = "close_laptop"
-            # HDF5_DIR = "data/datasets/wash_cup_1/"
-            # self.DATASET_NAME = "wash_cup_1"
+        if data_path is None:
+            HDF5_DIR = f"{RDT_ROOT_DIR}/data/datasets/agilex/rdt_data/"
         else:
             HDF5_DIR = data_path
-            self.DATASET_NAME = os.path.basename(HDF5_DIR)
+
+        self.DATASET_NAME = "agilex"
+
+        assert os.path.exists(HDF5_DIR), f"Dataset directory {HDF5_DIR} does not exist."
         
         self.file_paths = []
         for root, _, files in os.walk(HDF5_DIR):
             for filename in fnmatch.filter(files, '*.hdf5'):
                 file_path = os.path.join(root, filename)
                 self.file_paths.append(file_path)
-                
+
+        assert len(self.file_paths) > 0, "No HDF5 files found in the dataset directory."
+
         # Load the config
-        # with open('configs/base.yaml', 'r') as file:
-        with open('embodied_agent/third_party/vla/rdt/configs/base.yaml', 'r') as file:
+        with open(f'{RDT_CONFIG_DIR}/base.yaml', 'r') as file:
             config = yaml.safe_load(file)
         self.CHUNK_SIZE = config['common']['action_chunk_size']
         self.IMG_HISORY_SIZE = config['common']['img_history_size']
@@ -56,12 +57,17 @@ class HDF5VLADataset:
     def get_dataset_name(self):
         return self.DATASET_NAME
     
-    def get_item(self, index: int=None, state_only=False):
+    def get_item(self, index: int=None, step_id: int=None, instr_mode: str="normal", state_only: bool=False):
         """Get a training sample at a random timestep.
 
         Args:
             index (int, optional): the index of the episode.
                 If not provided, a random episode will be selected.
+            step_id (int, optional): the index of the sampled step.
+                If not provided, a random timestep will be selected.
+            instr_mode (str, optional): the instruction mode.
+                It can be "normal", "simplified", or "expanded". Defaults to "normal".
+                If not provided, a random mode will be selected from ["normal", "simplified", "expanded"].
             state_only (bool, optional): Whether to return only the state.
                 In this way, the sample will contain a complete trajectory rather
                 than a single timestep. Defaults to False.
@@ -74,14 +80,14 @@ class HDF5VLADataset:
                 file_path = np.random.choice(self.file_paths, p=self.episode_sample_weights)
             else:
                 file_path = self.file_paths[index]
-            valid, sample = self.parse_hdf5_file(file_path) \
+            valid, sample = self.parse_hdf5_file(file_path, step_id=step_id, instr_mode=instr_mode) \
                 if not state_only else self.parse_hdf5_file_state_only(file_path)
             if valid:
                 return sample
             else:
                 index = np.random.randint(0, len(self.file_paths))
     
-    def parse_hdf5_file(self, file_path):
+    def parse_hdf5_file(self, file_path, step_id: int=None, instr_mode: str="normal"):
         """[Modify] Parse a hdf5 file to generate a training sample at
             a random timestep.
 
@@ -136,9 +142,10 @@ class HDF5VLADataset:
                 first_idx = indices[0]
             else:
                 raise ValueError("Found no qpos that exceeds the threshold.")
-            # We should change this!!
-            # We randomly sample a timestep
-            step_id = np.random.randint(first_idx-1, num_steps)
+
+            # We randomly sample a timestep if step_id is not provided
+            if step_id is None:
+                step_id = np.random.randint(first_idx-1, num_steps)
             
             # Load the instruction
             dir_path = os.path.dirname(file_path)
@@ -147,8 +154,15 @@ class HDF5VLADataset:
             # We have 1/3 prob to use original instruction,
             # 1/3 to use simplified instruction,
             # and 1/3 to use expanded instruction.
-            instruction_type = np.random.choice([
-                'instruction', 'simplified_instruction', 'expanded_instruction'])
+            if instr_mode == "normal":
+                instruction_type = 'instruction'
+            elif instr_mode == "simplified":
+                instruction_type = 'simplified_instruction'
+            elif instr_mode == "expanded":
+                instruction_type = 'expanded_instruction'
+            else:
+                instruction_type = np.random.choice([
+                    'instruction', 'simplified_instruction', 'expanded_instruction'])
             instruction = instruction_dict[instruction_type]
             if isinstance(instruction, list):
                 instruction = np.random.choice(instruction)
@@ -210,6 +224,7 @@ class HDF5VLADataset:
             state_norm = fill_in_state(state_norm)
             # If action's format is different from state's,
             # you may implement fill_in_action()
+            raw_actions = actions.copy()
             actions = fill_in_state(actions)
             
             # Parse the images
@@ -250,6 +265,8 @@ class HDF5VLADataset:
                 "state_norm": state_norm,
                 "actions": actions,
                 "state_indicator": state_indicator,
+                "qpos": qpos[step_id:step_id+1],
+                "raw_actions": raw_actions,
                 "cam_high": cam_high,
                 "cam_high_mask": cam_high_mask,
                 "cam_left_wrist": cam_left_wrist,
@@ -352,10 +369,11 @@ class HDF5VLADataset:
                 "state": state,
                 "action": action
             }
-            
+
+
 class MyHDF5VLADataset(HDF5VLADataset):
-    def __init__(self,data_path=None) -> None:
-        super().__init__(data_path=data_path)
+    def __init__(self) -> None:
+        super().__init__()
     
     # Change the parameter, add step id for parse_hdf5_file using
     def get_item(self, step_id, index: int=None, state_only=False):
@@ -376,11 +394,10 @@ class MyHDF5VLADataset(HDF5VLADataset):
                 file_path = np.random.choice(self.file_paths, p=self.episode_sample_weights)
             else:
                 file_path = self.file_paths[index]
-            # import pdb;pdb.set_trace()
             valid, sample = self.parse_hdf5_file(file_path,step_id) \
                 if not state_only else self.parse_hdf5_file_state_only(file_path)
             if valid:
-                return sample
+                return sample, file_path
             else:
                 index = np.random.randint(0, len(self.file_paths))
     

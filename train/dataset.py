@@ -13,9 +13,16 @@ from torchvision import transforms
 from PIL import Image
 import transformers
 
-from data.filelock import FileLock
-from data.hdf5_vla_dataset import HDF5VLADataset,MyHDF5VLADataset
-from train.image_corrupt import image_corrupt
+try:
+    from ..constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
+    from ..data.filelock import FileLock
+    from ..data.hdf5_vla_dataset import HDF5VLADataset,MyHDF5VLADataset
+    from .image_corrupt import image_corrupt
+except ImportError:
+    from constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
+    from data.filelock import FileLock
+    from data.hdf5_vla_dataset import HDF5VLADataset,MyHDF5VLADataset
+    from train.image_corrupt import image_corrupt
 
 
 def get_clean_item(chunk_dir):
@@ -94,19 +101,18 @@ class VLAConsumerDataset(Dataset):
         cam_ext_mask_prob=-1.0,
         state_noise_snr=None,
         use_hdf5=False,
-        use_precomp_lang_embed=False
+        use_precomp_lang_embed=False,
+        data_path=None
     ):
         super(VLAConsumerDataset, self).__init__()
         
         # Load the control frequency for each dataset
         # with open("configs/dataset_control_freq.json", 'r') as fp:
-        with open("embodied_agent/third_party/vla/rdt/configs/dataset_control_freq.json", 'r') as fp:
+        with open(f"{RDT_CONFIG_DIR}/dataset_control_freq.json", 'r') as fp:
             self.control_freq = json.load(fp)
         # Load the dataset names
-        # dataset_names_cfg = 'configs/pretrain_datasets.json' \
-        #     if dataset_type == 'pretrain' else 'configs/finetune_datasets.json'
-        dataset_names_cfg = 'embodied_agent/third_party/vla/rdt/configs/pretrain_datasets.json' \
-            if dataset_type == 'pretrain' else 'embodied_agent/third_party/vla/rdt/configs/finetune_datasets.json'
+        dataset_names_cfg = f'{RDT_CONFIG_DIR}/pretrain_datasets.json' \
+            if dataset_type == 'pretrain' else f'{RDT_CONFIG_DIR}/finetune_datasets.json'
         with open(dataset_names_cfg, 'r') as file:
             DATASET_NAMES = json.load(file)
         # Create the mapping between dataset name and id
@@ -128,16 +134,14 @@ class VLAConsumerDataset(Dataset):
         self.use_hdf5 = use_hdf5
         self.hdf5_dataset = None
         if use_hdf5:
-            self.hdf5_dataset = MyHDF5VLADataset()
-            # self.hdf5_dataset = HDF5VLADataset()
+            self.hdf5_dataset = HDF5VLADataset(data_path)
         self.use_precomp_lang_embed = use_precomp_lang_embed
         if use_precomp_lang_embed:
-            # self.empty_lang_embed = torch.load("data/empty_lang_embed.pt")
-            self.empty_lang_embed = torch.load("embodied_agent/third_party/vla/rdt/data/empty_lang_embed.pt")
+            self.empty_lang_embed = torch.load(f"{RDT_ROOT_DIR}/data/empty_lang_embed.pt")
         
         # Load dataset stat
         # with open("configs/dataset_stat.json", 'r') as f:
-        with open("embodied_agent/third_party/vla/rdt/configs/dataset_stat.json", 'r') as f:
+        with open(f"{RDT_CONFIG_DIR}/dataset_stat.json", 'r') as f:
             dataset_stat = json.load(f)
         self.dataset_stat = dataset_stat
         

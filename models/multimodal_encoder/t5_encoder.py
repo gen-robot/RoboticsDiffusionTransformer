@@ -70,7 +70,17 @@ class T5Embedder:
         self.use_text_preprocessing = use_text_preprocessing
         self.hf_token = hf_token
 
-        assert from_pretrained in self.available_models
+        # assert from_pretrained in self.available_models
+        valid = False
+        for model_name in self.available_models:
+            if model_name in from_pretrained:
+                valid = True
+                break
+
+        assert valid, "invalid pretrained model: {}, expected: {}".format(
+            from_pretrained, self.available_models
+        )
+            
         self.tokenizer = AutoTokenizer.from_pretrained(
             from_pretrained,
             model_max_length=model_max_length,
