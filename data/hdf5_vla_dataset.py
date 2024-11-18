@@ -7,8 +7,12 @@ import yaml
 import cv2
 import numpy as np
 
-from ..configs.state_vec import STATE_VEC_IDX_MAPPING
-from ..constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
+try:
+    from ..configs.state_vec import STATE_VEC_IDX_MAPPING
+    from ..constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
+except ImportError:
+    from configs.state_vec import STATE_VEC_IDX_MAPPING
+    from constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
 
 
 class HDF5VLADataset:
