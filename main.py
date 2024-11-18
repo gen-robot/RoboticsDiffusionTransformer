@@ -1,12 +1,25 @@
 import argparse
 import os
 from train.train import train
+from train.eval import eval
 
 from accelerate.logging import get_logger
 
 
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Main script for training RDT.")
+    parser.add_argument(
+        "--eval",
+        action="store_true",
+        default=False,
+        help="Whether to run the evaluation loop. If False, the training loop will be executed.",
+    )
+    parser.add_argument(
+        "--data_path",
+        type=str,
+        default=None,
+        help="Path to the dataset for evaluation.",
+    )
     parser.add_argument(
         "--config_path",
         type=str,
@@ -297,4 +310,7 @@ def parse_args(input_args=None):
 if __name__ == "__main__":
     logger = get_logger(__name__)
     args = parse_args()
-    train(args, logger)
+    if args.eval:
+        eval(args, logger)
+    else:
+        train(args, logger)
