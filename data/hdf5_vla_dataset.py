@@ -28,7 +28,7 @@ class HDF5VLADataset:
         else:
             HDF5_DIR = data_path
 
-        self.DATASET_NAME = "agilex"
+        self.DATASET_NAME = os.path.basename(HDF5_DIR)
 
         assert os.path.exists(HDF5_DIR), f"Dataset directory {HDF5_DIR} does not exist."
         
