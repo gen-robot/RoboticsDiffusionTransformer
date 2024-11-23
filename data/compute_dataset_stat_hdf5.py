@@ -76,22 +76,66 @@ if __name__ == "__main__":
                         help="JSON file path to save the dataset statistics.")
     parser.add_argument('--skip_exist', action='store_true', 
                         help="Whether to skip the existing dataset statistics.")
+    parser.add_argument('--update_rdt_ft_data', type=bool, 
+                        default=False)
     args = parser.parse_args()
     
-    vla_dataset = HDF5VLADataset()
-    dataset_name = vla_dataset.get_dataset_name()
-    
-    try:
-        with open(args.save_path, 'r') as f:
-            results = json.load(f)
-    except FileNotFoundError:
-        results = {}
-    if args.skip_exist and dataset_name in results:
-        print(f"Skipping existed {dataset_name} dataset statistics")
+    if not args.update_rdt_ft_data:
+        vla_dataset = HDF5VLADataset()
+        dataset_name = vla_dataset.get_dataset_name()
+        
+        try:
+            with open(args.save_path, 'r') as f:
+                results = json.load(f)
+        except FileNotFoundError:
+            results = {}
+        if args.skip_exist and dataset_name in results:
+            print(f"Skipping existed {dataset_name} dataset statistics")
+        else:
+            print(f"Processing {dataset_name} dataset")
+            result = process_hdf5_dataset(vla_dataset)
+            results[result["dataset_name"]] = result
+            with open(args.save_path, 'w') as f:
+                json.dump(results, f, indent=4)
+        print("All datasets have been processed.")
+
     else:
-        print(f"Processing {dataset_name} dataset")
-        result = process_hdf5_dataset(vla_dataset)
-        results[result["dataset_name"]] = result
-        with open(args.save_path, 'w') as f:
-            json.dump(results, f, indent=4)
-    print("All datasets have been processed.")
+        from embodied_agent.third_party.vla.rdt.constants import RDT_ROOT_DIR
+        import os
+        RDT_DATASETS_DIR = f"{RDT_ROOT_DIR}/data/datasets/"
+        assert os.path.exists(RDT_DATASETS_DIR), f"Dataset directory {RDT_DATASETS_DIR} does not exist."
+        datasets_paths = []
+        error_files = []
+        i = 0
+        for root, dir, files in os.walk(RDT_DATASETS_DIR,followlinks=True):
+            name = os.path.basename(root)
+            if name in {"","datasets",}:
+                continue
+            # # write_board_13 dataset is broken.
+            # if name not in {"write_board_13",}:
+            #     continue
+            i+=1
+            print("Step  ", i )
+            try:
+                vla_dataset = HDF5VLADataset(data_path=root)
+                dataset_name = vla_dataset.get_dataset_name()
+                try:
+                    with open(args.save_path, 'r') as f:
+                        results = json.load(f)
+                except FileNotFoundError:
+                    results = {}
+                if args.skip_exist and dataset_name in results:
+                    print(f"Skipping existed {dataset_name} dataset statistics")
+                else:
+                    print(f"Processing {dataset_name} dataset")
+                    result = process_hdf5_dataset(vla_dataset)
+                    results[result["dataset_name"]] = result
+                    with open(args.save_path, 'w') as f:
+                        json.dump(results, f, indent=4)
+            
+            except Exception as e:
+                error_files.append({"path": root, "error": str(e)})
+                print(f"Error processing dataset at {root}: {e}")
+                continue
+        print("All datasets have been processed.")
+        print("error files ", error_files)
