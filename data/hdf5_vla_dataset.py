@@ -38,6 +38,8 @@ class HDF5VLADataset:
                 file_path = os.path.join(root, filename)
                 self.file_paths.append(file_path)
 
+        print(f"Found {len(self.file_paths)} HDF5 files in the dataset directory.")
+
         assert len(self.file_paths) > 0, "No HDF5 files found in the dataset directory."
 
         # Load the config
@@ -182,12 +184,14 @@ class HDF5VLADataset:
             }
             
             # Rescale gripper to [0, 1]
-            qpos = qpos / np.array(
-               [[1, 1, 1, 1, 1, 1, 4.7908, 1, 1, 1, 1, 1, 1, 4.7888]] 
-            )
-            target_qpos = f['action'][step_id:step_id+self.CHUNK_SIZE] / np.array(
-               [[1, 1, 1, 1, 1, 1, 11.8997, 1, 1, 1, 1, 1, 1, 13.9231]] 
-            )
+            qpos = qpos 
+            # / np.array(
+            #    [[1, 1, 1, 1, 1, 1, 4.7908, 1, 1, 1, 1, 1, 1, 4.7888]] 
+            # )
+            target_qpos = f['action'][step_id:step_id+self.CHUNK_SIZE] 
+            # / np.array(
+            #    [[1, 1, 1, 1, 1, 1, 11.8997, 1, 1, 1, 1, 1, 1, 13.9231]] 
+            # )
             
             # Parse the state and action
             state = qpos[step_id:step_id+1]
@@ -233,7 +237,10 @@ class HDF5VLADataset:
                 imgs = []
                 for i in range(max(step_id-self.IMG_HISORY_SIZE+1, 0), step_id+1):
                     img = f['observations']['images'][key][i]
-                    imgs.append(cv2.imdecode(np.frombuffer(img, np.uint8), cv2.IMREAD_COLOR))
+                    if f.attrs.get('compress', False):
+                        imgs.append(cv2.imdecode(np.frombuffer(img, np.uint8), cv2.IMREAD_COLOR))
+                    else:
+                        imgs.append(img)
                 imgs = np.stack(imgs)
                 if imgs.shape[0] < self.IMG_HISORY_SIZE:
                     # Pad the images using the first image
