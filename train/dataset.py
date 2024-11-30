@@ -16,12 +16,12 @@ import transformers
 try:
     from ..constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
     from ..data.filelock import FileLock
-    from ..data.hdf5_vla_dataset import HDF5VLADataset,MyHDF5VLADataset
+    from ..data.hdf5_vla_dataset import HDF5VLADataset
     from .image_corrupt import image_corrupt
 except ImportError:
     from constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
     from data.filelock import FileLock
-    from data.hdf5_vla_dataset import HDF5VLADataset,MyHDF5VLADataset
+    from data.hdf5_vla_dataset import HDF5VLADataset
     from train.image_corrupt import image_corrupt
 
 
