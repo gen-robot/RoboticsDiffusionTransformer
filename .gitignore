@@ -1,3 +1,5 @@
+invalid_file_paths.txt
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

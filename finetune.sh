@@ -1,7 +1,7 @@
 export NCCL_IB_HCA=mlx5_0:1,mlx5_1:1,mlx5_2:1,mlx5_3:1,mlx5_4:1,mlx5_7:1,mlx5_8:1,mlx5_9:1
 export NCCL_IB_DISABLE=0
 # set NCCL_SOCKET_IFNAME to the interface you want to use for NCCL communication, get from ifconfig. otherwise will encounter error("NCCL WARN Bootstrap : no socket interface found")
-export NCCL_SOCKET_IFNAME=eno1 #bond0 
+# export NCCL_SOCKET_IFNAME=enp210s0f0 #bond0 
 export NCCL_DEBUG=INFO
 export NCCL_NVLS_ENABLE=0
 
@@ -14,7 +14,12 @@ export LDFLAGS="-L/usr/lib/x86_64-linux-gnu"
 
 # assert CUTLASS_PATH is set
 if [ -z "$CUTLASS_PATH" ]; then
-    echo "CUTLASS_PATH is not set"
+    echo "CUTLASS_PATH is not set, clone git@github.com:NVIDIA/cutlass.git and export CUTLASS_PATH=/path/to/cutlass"
+    exit 1
+fi
+
+if [ -z "$NCCL_SOCKET_IFNAME" ]; then
+    echo "NCCL_SOCKET_IFNAME is not set, check ifconfig for the interface name"
     exit 1
 fi
 
@@ -32,14 +37,16 @@ fi
 #     --deepspeed="./configs/zero2.json" \
 #     ...
 
-deepspeed --hostfile=hostfile.txt main.py \
+# deepspeed --hostfile=hostfile.txt
+
+accelerate launch main.py \
     --deepspeed="./configs/zero2.json" \
     --pretrained_model_name_or_path="google/rdt-170m" \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
     --pretrained_vision_encoder_name_or_path=$VISION_ENCODER_NAME \
     --output_dir=$OUTPUT_DIR \
-    --train_batch_size=1 \
-    --sample_batch_size=1 \
+    --train_batch_size=32 \
+    --sample_batch_size=64 \
     --max_train_steps=200000 \
     --checkpointing_period=1000 \
     --sample_period=500 \

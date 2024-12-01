@@ -35,7 +35,7 @@ class HDF5VLADataset:
         self.file_paths = []
         self.invalid_file_paths = []
         for root, _, files in os.walk(HDF5_DIR, followlinks=True):
-            for filename in fnmatch.filter(files, '*.hdf5'):
+            for filename in sorted(fnmatch.filter(files, '*.hdf5')):
                 file_path = os.path.join(root, filename)
                 try:
                     f = h5py.File(file_path, 'r')
