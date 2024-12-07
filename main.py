@@ -21,6 +21,18 @@ def parse_args(input_args=None):
         help="Path to the dataset for evaluation.",
     )
     parser.add_argument(
+        "--robot_name",
+        type=str,
+        default='rdt',
+        help="Name of the robot.",
+    )
+    parser.add_argument(
+        "--run_name",
+        type=str,
+        default=None,
+        help="Name of the run for wandb logging.",
+    )
+    parser.add_argument(
         "--config_path",
         type=str,
         default="configs/base.yaml",

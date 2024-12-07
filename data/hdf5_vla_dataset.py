@@ -20,7 +20,7 @@ class HDF5VLADataset:
     This class is used to sample episodes from the embododiment dataset
     stored in HDF5.
     """
-    def __init__(self, data_path: str=None) -> None:
+    def __init__(self, data_path: str=None, robot_name: str='rdt') -> None:
         # [Modify] The path to the HDF5 dataset directory
         # Each HDF5 file contains one episode
         if data_path is None:
@@ -29,6 +29,12 @@ class HDF5VLADataset:
             HDF5_DIR = data_path
 
         self.DATASET_NAME = "agilex"
+
+        with open(f'{RDT_CONFIG_DIR}/gripper_scale.json', 'r') as gs_file:
+            self.gs_dict = json.load(gs_file)
+            assert robot_name in self.gs_dict, f"Robot name {robot_name} not found in gripper scale dict."
+            self.gripper_qpos_scale = self.gs_dict[robot_name]['qpos']
+            self.gripper_action_scale = self.gs_dict[robot_name]['action']
 
         assert os.path.exists(HDF5_DIR), f"Dataset directory {HDF5_DIR} does not exist."
         
@@ -197,11 +203,11 @@ class HDF5VLADataset:
             
             # Rescale gripper to [0, 1]
             qpos = qpos / np.array(
-               [[1, 1, 1, 1, 1, 1, 4.7908, 1, 1, 1, 1, 1, 1, 4.7888]] 
-            )
+               [[1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[0], 1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[1]]] 
+            ) # 0.066
             target_qpos = f['action'][step_id:step_id+self.CHUNK_SIZE] / np.array(
-               [[1, 1, 1, 1, 1, 1, 11.8997, 1, 1, 1, 1, 1, 1, 13.9231]] 
-            )
+               [[1, 1, 1, 1, 1, 1, self.gripper_action_scale[0], 1, 1, 1, 1, 1, 1, self.gripper_action_scale[1]]] 
+            ) # 0.072
             
             # Parse the state and action
             state = qpos[step_id:step_id+1]

@@ -94,6 +94,13 @@ def train(args, logger):
     if args.report_to == "wandb":
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+        tracker_init_kwargs = {
+            "wandb": {
+                "name": args.run_name if args.run_name is not None else args.logging_dir.strip("/").split("/")[-1],
+            }
+        }
+    else:
+        tracker_init_kwargs = {}
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -250,6 +257,8 @@ def train(args, logger):
         state_noise_snr=args.state_noise_snr,
         use_hdf5=args.load_from_hdf5,
         use_precomp_lang_embed=args.precomp_lang_embed,
+        data_path=args.data_path,
+        robot_name=args.robot_name,
     )
     sample_dataset = VLAConsumerDataset(
         config=config["dataset"],
@@ -264,7 +273,9 @@ def train(args, logger):
         state_noise_snr=None,
         use_hdf5=args.load_from_hdf5,
         use_precomp_lang_embed=args.precomp_lang_embed,
-    )                              
+        data_path=args.data_path,
+        robot_name=args.robot_name,
+    )
     
     data_collator = DataCollatorForVLAConsumerDataset(tokenizer)                                                        
     
@@ -326,7 +337,7 @@ def train(args, logger):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("roboticDiffusionTransformer", config=vars(args))
+        accelerator.init_trackers("roboticDiffusionTransformer", config=vars(args), init_kwargs=tracker_init_kwargs)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps

@@ -1,4 +1,6 @@
 invalid_file_paths.txt
+videos
+checkpoints
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

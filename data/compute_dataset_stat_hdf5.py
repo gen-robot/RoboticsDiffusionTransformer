@@ -9,7 +9,10 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 
-from data.hdf5_vla_dataset import HDF5VLADataset
+try:
+    from .hdf5_vla_dataset import HDF5VLADataset
+except:
+    from hdf5_vla_dataset import HDF5VLADataset
 
 
 def process_hdf5_dataset(vla_dataset):
@@ -71,14 +74,16 @@ def process_hdf5_dataset(vla_dataset):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument('--data_path', type=str, 
+                        help="Path to the dataset.")
     parser.add_argument('--save_path', type=str, 
-                        default="embodied_agent/third_party/vla/rdt/configs/dataset_stat.json", 
+                        default="dataset_stat.json", 
                         help="JSON file path to save the dataset statistics.")
     parser.add_argument('--skip_exist', action='store_true', 
                         help="Whether to skip the existing dataset statistics.")
     args = parser.parse_args()
     
-    vla_dataset = HDF5VLADataset()
+    vla_dataset = HDF5VLADataset(args.data_path)
     dataset_name = vla_dataset.get_dataset_name()
     
     try:
