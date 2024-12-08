@@ -20,7 +20,7 @@ class HDF5VLADataset:
     This class is used to sample episodes from the embododiment dataset
     stored in HDF5.
     """
-    def __init__(self, data_path: str=None, robot_name: str='rdt') -> None:
+    def __init__(self, data_path: str=None, robot_name: str='rdt', use_precomp_lang_embed: bool=False) -> None:
         # [Modify] The path to the HDF5 dataset directory
         # Each HDF5 file contains one episode
         if data_path is None:
@@ -29,6 +29,7 @@ class HDF5VLADataset:
             HDF5_DIR = data_path
 
         self.DATASET_NAME = "agilex"
+        self.use_precomp_lang_embed = use_precomp_lang_embed
 
         with open(f'{RDT_CONFIG_DIR}/gripper_scale.json', 'r') as gs_file:
             self.gs_dict = json.load(gs_file)
@@ -43,6 +44,10 @@ class HDF5VLADataset:
         for root, _, files in os.walk(HDF5_DIR, followlinks=True):
             for filename in sorted(fnmatch.filter(files, '*.hdf5')):
                 file_path = os.path.join(root, filename)
+                file_dir = os.path.dirname(file_path)
+                if self.use_precomp_lang_embed:
+                    assert os.path.exists(os.path.join(file_dir, "lang_embeds")), \
+                        f"Language embeddings not found for {file_path} for precomputed language embeddings."
                 try:
                     f = h5py.File(file_path, 'r')
                     self.file_paths.append(file_path)
@@ -191,7 +196,17 @@ class HDF5VLADataset:
             if isinstance(instruction, list):
                 instruction = np.random.choice(instruction)
             # You can also use precomputed language embeddings (recommended)
-            # instruction = "path/to/lang_embed.pt"
+            if self.use_precomp_lang_embed:
+                # Load the precomputed language embeddings
+                embeds_dir = os.path.join(dir_path, "lang_embeds")
+                all_embeds = [
+                    os.path.join(embeds_dir, p) for p in sorted(os.listdir(embeds_dir))
+                    if p.endswith(".pt")
+                ]
+                assert len(all_embeds) > 0, \
+                    "No language embeddings found in {}.".format(embeds_dir)
+                # randomly sample a language embedding
+                instruction = np.random.choice(all_embeds)
             
             # Assemble the meta
             meta = {

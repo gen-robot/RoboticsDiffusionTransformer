@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 
 import diffusers
+import peft
 import torch
 import torch.utils.checkpoint
 import transformers
@@ -155,6 +156,21 @@ def train(args, logger):
     ):
         logger.info("Constructing model from pretrained checkpoint.")
         rdt = RDTRunner.from_pretrained(args.pretrained_model_name_or_path)
+
+        if args.lora_rank > 0:
+            logger.info("Applying LoRA fine-tuning with rank {}".format(args.lora_rank))
+            lora_config = peft.LoraConfig(
+                r=args.lora_rank,
+                lora_alpha=min(16, 16),
+                lora_dropout=0.1,
+                target_modules=[
+                    "ffn.fc1","ffn.fc2","qkv", "cross_attn.q","cross_attn.kv","proj",
+                    "lang_adaptor.","img_adaptor.","state_adaptor."
+                ],
+                init_lora_weights="gaussian",
+            )
+            rdt = peft.get_peft_model(rdt, lora_config)
+            rdt.print_trainable_parameters()
     else:
         logger.info("Constructing model from provided config.")
         # Calculate the image condition length
@@ -234,7 +250,7 @@ def train(args, logger):
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
-    params_to_optimize = rdt.parameters()
+    params_to_optimize = [p for p in rdt.parameters() if p.requires_grad]
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
@@ -319,7 +335,7 @@ def train(args, logger):
         rdt, optimizer, train_dataloader, sample_dataloader, lr_scheduler                   
     )
 
-    ema_rdt.to(accelerator.device, dtype=weight_dtype)                                                                             
+    ema_rdt.to(accelerator.device, dtype=weight_dtype)
 
     if text_encoder is not None:
         text_encoder.to(accelerator.device, dtype=weight_dtype)
@@ -420,7 +436,7 @@ def train(args, logger):
                 actions = batch["actions"].to(dtype=weight_dtype)
                 state_elem_mask = batch["state_elem_mask"].to(dtype=weight_dtype)
                 ctrl_freqs = batch["ctrl_freqs"]
-                    
+
                 with torch.no_grad():
                     batch_size, _, C, H, W = images.shape
                     image_embeds = vision_encoder(images.reshape(-1, C, H, W)).detach()
@@ -471,7 +487,7 @@ def train(args, logger):
                     sample_loss_for_log = log_sample_res(
                         text_encoder,
                         vision_encoder,
-                        rdt,    # We do not use EMA currently
+                        rdt, # We do not use EMA currently
                         args,
                         accelerator,
                         weight_dtype,

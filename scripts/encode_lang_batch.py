@@ -12,7 +12,8 @@ GPU = 0
 MODEL_PATH = "google/t5-v1_1-xxl"
 CONFIG_PATH = "configs/base.yaml"
 # Modify the TARGET_DIR to your dataset path
-TARGET_DIR = "data/datasets/agilex/tfrecords/"
+TARGET_DIR = "/home/gaofeng/arm_ws/EmbodiedAgent/RDT/data/datasets/agilex/cobot_data"
+# "data/datasets/agilex/tfrecords/"
 
 
 def main():
@@ -26,16 +27,21 @@ def main():
         device=device
     )
     tokenizer, text_encoder = text_embedder.tokenizer, text_embedder.model
-    
+    # import pdb; pdb.set_trace()
     # Get all the task paths
     task_paths = []
     for sub_dir in os.listdir(TARGET_DIR):
         middle_dir = os.path.join(TARGET_DIR, sub_dir)
         if os.path.isdir(middle_dir):
             for task_dir in os.listdir(middle_dir):
+                if task_dir.startswith("episode"):
+                    break
                 task_path = os.path.join(middle_dir, task_dir)
                 if os.path.isdir(task_path):
                     task_paths.append(task_path)
+            task_paths.append(middle_dir)
+
+    print(f"Found {len(task_paths)} tasks to encode instructions for.")
 
     # For each task, encode the instructions
     for task_path in tqdm(task_paths):
@@ -62,10 +68,13 @@ def main():
         
         attn_mask = attn_mask.cpu().bool()
 
+        if not os.path.exists(os.path.join(task_path, "lang_embed")):
+            os.makedirs(os.path.join(task_path, "lang_embed"))
+
         # Save the embeddings for training use
         for i in range(len(instructions)):
             text_embed = text_embeds[i][attn_mask[i]]
-            save_path = os.path.join(task_path, f"lang_embed_{i}.pt")
+            save_path = os.path.join(task_path, "lang_embeds", f"lang_embed_{i}.pt")
             torch.save(text_embed, save_path)
 
 if __name__ == "__main__":
