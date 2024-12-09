@@ -171,6 +171,8 @@ def train(args, logger):
             )
             rdt = peft.get_peft_model(rdt, lora_config)
             rdt.print_trainable_parameters()
+        else:
+            logger.info("No LoRA fine-tuning applied.")
     else:
         logger.info("Constructing model from provided config.")
         # Calculate the image condition length

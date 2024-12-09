@@ -6,8 +6,10 @@ export NCCL_DEBUG=INFO
 export NCCL_NVLS_ENABLE=0
 
 now="$(date +"%Y%m%d-%H%M%S")"
+lora_rank=$1
+bs=$2
 
-run_name="cobot-coke-rdt1b-prelang-lora16"
+run_name="cobot-coke-rdt1b-prelang-lora${lora_rank}-bs${bs}"
 ckpt_path="google/rdt-1b"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
@@ -47,15 +49,15 @@ fi
 accelerate launch main.py \
     --deepspeed="./configs/zero2.json" \
     --robot_name="cobot" \
-    --lora_rank=16 \
+    --lora_rank=${lora_rank} \
     --run_name=${run_name} \
     --data_path="/home/gaofeng/arm_ws/EmbodiedAgent/RDT/data/datasets/agilex/cobot_data/move_coke" \
     --pretrained_model_name_or_path=${ckpt_path} \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
     --pretrained_vision_encoder_name_or_path=$VISION_ENCODER_NAME \
     --output_dir=$OUTPUT_DIR \
-    --train_batch_size=10 \
-    --sample_batch_size=10 \
+    --train_batch_size=${bs} \
+    --sample_batch_size=${bs} \
     --max_train_steps=200000 \
     --checkpointing_period=1000 \
     --sample_period=500 \
