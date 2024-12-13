@@ -8,9 +8,12 @@ export NCCL_NVLS_ENABLE=0
 now="$(date +"%Y%m%d-%H%M%S")"
 lora_rank=$1
 bs=$2
+task=$3
 
-run_name="cobot-coke-rdt1b-prelang-lora${lora_rank}-bs${bs}"
-ckpt_path="google/rdt-1b"
+# run_name="cobot-coke-rdt1b-prelang-lora${lora_rank}-bs${bs}"
+# ckpt_path="google/rdt-1b"
+run_name="cobot-${task}-rdt1bft-prelang-lora${lora_rank}-bs${bs}"
+ckpt_path="google/rdt-1b-ft"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
 export VISION_ENCODER_NAME="google/siglip-so400m-patch14-384"
@@ -51,7 +54,7 @@ accelerate launch main.py \
     --robot_name="cobot" \
     --lora_rank=${lora_rank} \
     --run_name=${run_name} \
-    --data_path="/home/gaofeng/arm_ws/EmbodiedAgent/RDT/data/datasets/agilex/cobot_data/move_coke" \
+    --data_path="data/datasets/agilex/cobot_data/${task}" \
     --pretrained_model_name_or_path=${ckpt_path} \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
     --pretrained_vision_encoder_name_or_path=$VISION_ENCODER_NAME \

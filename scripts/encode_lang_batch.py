@@ -5,7 +5,10 @@ import torch
 import yaml
 from tqdm import tqdm
 
-from models.multimodal_encoder.t5_encoder import T5Embedder
+try:
+    from ..models.multimodal_encoder.t5_encoder import T5Embedder
+except:
+    from models.multimodal_encoder.t5_encoder import T5Embedder
 
 
 GPU = 0
@@ -68,8 +71,8 @@ def main():
         
         attn_mask = attn_mask.cpu().bool()
 
-        if not os.path.exists(os.path.join(task_path, "lang_embed")):
-            os.makedirs(os.path.join(task_path, "lang_embed"))
+        if not os.path.exists(os.path.join(task_path, "lang_embeds")):
+            os.makedirs(os.path.join(task_path, "lang_embeds"))
 
         # Save the embeddings for training use
         for i in range(len(instructions)):

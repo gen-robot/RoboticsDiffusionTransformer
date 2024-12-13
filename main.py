@@ -4,6 +4,7 @@ from train.train import train
 from train.eval import eval
 
 from accelerate.logging import get_logger
+from setproctitle import setproctitle
 
 
 def parse_args(input_args=None):
@@ -112,7 +113,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--checkpoints_total_limit",
         type=int,
-        default=None,
+        default=5,
         help=(
             "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
             " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
@@ -328,6 +329,11 @@ def parse_args(input_args=None):
 if __name__ == "__main__":
     logger = get_logger(__name__)
     args = parse_args()
+    if args.run_name is None:
+        setproctitle("rdt-ft")
+    else:
+        setproctitle(args.run_name)
+        
     if args.eval:
         eval(args, logger)
     else:
