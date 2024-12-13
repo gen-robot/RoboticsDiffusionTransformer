@@ -314,6 +314,13 @@ def parse_args(input_args=None):
         help="Whether to load the pretrain dataset or finetune dataset."
     )
 
+    parser.add_argument('--max_demo_per_task',
+        type=int,
+        default=100,
+        required=False,
+        help="The maximum number of demonstrations per task."
+    )
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:

@@ -20,13 +20,21 @@ class HDF5VLADataset:
     This class is used to sample episodes from the embododiment dataset
     stored in HDF5.
     """
-    def __init__(self, data_path: str=None, robot_name: str='rdt', use_precomp_lang_embed: bool=False) -> None:
+    def __init__(
+            self, 
+            data_path: str=None, 
+            robot_name: str='rdt', 
+            use_precomp_lang_embed: bool=False,
+            max_demo_per_task: int=None
+    ) -> None:
         # [Modify] The path to the HDF5 dataset directory
         # Each HDF5 file contains one episode
         if data_path is None:
             HDF5_DIR = f"{RDT_ROOT_DIR}/data/datasets/agilex/cobot_data/"
         else:
             HDF5_DIR = data_path
+        if max_demo_per_task is None:
+            max_demo_per_task = 999
 
         self.DATASET_NAME = "agilex"
         self.use_precomp_lang_embed = use_precomp_lang_embed
@@ -42,7 +50,10 @@ class HDF5VLADataset:
         self.file_paths = []
         self.invalid_file_paths = []
         for root, _, files in os.walk(HDF5_DIR, followlinks=True):
-            for filename in sorted(fnmatch.filter(files, '*.hdf5')):
+            for filename in sorted(fnmatch.filter(files, '*.hdf5'), key=lambda x: int(x.split('_')[-1].split('.')[0])):
+                episode_id = int(filename.split('/')[-1].split('_')[-1].split('.')[0])
+                if episode_id >= max_demo_per_task:
+                    continue
                 file_path = os.path.join(root, filename)
                 file_dir = os.path.dirname(file_path)
                 if self.use_precomp_lang_embed:

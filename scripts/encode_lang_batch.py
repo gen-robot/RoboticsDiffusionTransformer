@@ -37,6 +37,8 @@ def main():
         middle_dir = os.path.join(TARGET_DIR, sub_dir)
         if os.path.isdir(middle_dir):
             for task_dir in os.listdir(middle_dir):
+                if not "bi_pick" in middle_dir:
+                    continue
                 if task_dir.startswith("episode"):
                     break
                 task_path = os.path.join(middle_dir, task_dir)

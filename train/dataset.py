@@ -104,6 +104,7 @@ class VLAConsumerDataset(Dataset):
         use_precomp_lang_embed=False,
         data_path=None,
         robot_name='rdt',
+        max_demo_per_task=100
     ):
         super(VLAConsumerDataset, self).__init__()
         
@@ -135,7 +136,7 @@ class VLAConsumerDataset(Dataset):
         self.use_hdf5 = use_hdf5
         self.hdf5_dataset = None
         if use_hdf5:
-            self.hdf5_dataset = HDF5VLADataset(data_path, robot_name, use_precomp_lang_embed)
+            self.hdf5_dataset = HDF5VLADataset(data_path, robot_name, use_precomp_lang_embed, max_demo_per_task)
         self.use_precomp_lang_embed = use_precomp_lang_embed
         if use_precomp_lang_embed:
             self.empty_lang_embed = torch.load(f"{RDT_ROOT_DIR}/data/empty_lang_embed.pt")

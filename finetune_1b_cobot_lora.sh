@@ -9,10 +9,11 @@ now="$(date +"%Y%m%d-%H%M%S")"
 lora_rank=$1
 bs=$2
 task=$3
+max_demo=$4
 
 # run_name="cobot-coke-rdt1b-prelang-lora${lora_rank}-bs${bs}"
 # ckpt_path="google/rdt-1b"
-run_name="cobot-${task}-rdt1bft-prelang-lora${lora_rank}-bs${bs}"
+run_name="cobot-${task}-rdt1bft-prelang-lora${lora_rank}-bs${bs}-demo${max_demo}"
 ckpt_path="google/rdt-1b-ft"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
@@ -52,10 +53,12 @@ fi
 accelerate launch main.py \
     --deepspeed="./configs/zero2.json" \
     --robot_name="cobot" \
+    --precomp_lang_embed \
     --lora_rank=${lora_rank} \
     --run_name=${run_name} \
     --data_path="data/datasets/agilex/cobot_data/${task}" \
     --pretrained_model_name_or_path=${ckpt_path} \
+    --max_demo_per_task=${max_demo} \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
     --pretrained_vision_encoder_name_or_path=$VISION_ENCODER_NAME \
     --output_dir=$OUTPUT_DIR \
@@ -73,8 +76,7 @@ accelerate launch main.py \
     --dataset_type="finetune" \
     --state_noise_snr=40 \
     --load_from_hdf5 \
-    --report_to=wandb \
-    --precomp_lang_embed
+    --report_to=wandb
 
     # Use this to resume training from some previous checkpoint
     # --resume_from_checkpoint="checkpoint-36000" \

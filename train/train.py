@@ -277,6 +277,7 @@ def train(args, logger):
         use_precomp_lang_embed=args.precomp_lang_embed,
         data_path=args.data_path,
         robot_name=args.robot_name,
+        max_demo_per_task=args.max_demo_per_task,
     )
     sample_dataset = VLAConsumerDataset(
         config=config["dataset"],
@@ -293,6 +294,7 @@ def train(args, logger):
         use_precomp_lang_embed=args.precomp_lang_embed,
         data_path=args.data_path,
         robot_name=args.robot_name,
+        max_demo_per_task=args.max_demo_per_task,
     )
     
     data_collator = DataCollatorForVLAConsumerDataset(tokenizer)                                                        
