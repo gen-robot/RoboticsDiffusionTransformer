@@ -154,7 +154,7 @@ def train(args, logger):
         args.pretrained_model_name_or_path is not None
         and not os.path.isfile(args.pretrained_model_name_or_path)
     ):
-        logger.info("Constructing model from pretrained checkpoint.")
+        logger.info("Constructing model from pretrained checkpoint {}".format(args.pretrained_model_name_or_path))
         rdt = RDTRunner.from_pretrained(args.pretrained_model_name_or_path)
 
         if args.lora_rank > 0:
@@ -380,7 +380,7 @@ def train(args, logger):
         and os.path.isfile(args.pretrained_model_name_or_path)
     ):
         # Since EMA is deprecated, we do not load EMA from the pretrained checkpoint
-        logger.info("Loading from a pretrained checkpoint.")
+        logger.info("Loading from a pretrained checkpoint {}".format(args.pretrained_model_name_or_path))
         checkpoint = torch.load(args.pretrained_model_name_or_path)
         rdt.module.load_state_dict(checkpoint["module"])
    
@@ -486,6 +486,15 @@ def train(args, logger):
                     ema_save_path = os.path.join(save_path, f"ema")
                     accelerator.save_model(ema_rdt, ema_save_path)
                     logger.info(f"Saved state to {save_path}")
+
+                    # Remove old checkpoints and keep the last checkpoints_total_limit
+                    all_checkpoints = [d for d in os.listdir(args.output_dir) if d.startswith("checkpoint-")]
+                    if len(all_checkpoints) > args.checkpoints_total_limit:
+                        sorted_checkpoints = sorted(all_checkpoints, key=lambda x: int(x.split("-")[-1]))
+                        for ckpt in sorted_checkpoints[:-args.checkpoints_total_limit]:
+                            ckpt_path = os.path.join(args.output_dir, ckpt)
+                            logger.info(f"Removing {ckpt_path}")
+                            os.system(f"rm -rf {ckpt_path}")
 
                 if args.sample_period > 0 and global_step % args.sample_period == 0:
                     sample_loss_for_log = log_sample_res(

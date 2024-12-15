@@ -10,11 +10,12 @@ lora_rank=$1
 bs=$2
 task=$3
 max_demo=$4
+pretrained=$5
 
 # run_name="cobot-coke-rdt1b-prelang-lora${lora_rank}-bs${bs}"
 # ckpt_path="google/rdt-1b"
-run_name="cobot-${task}-rdt1bft-prelang-lora${lora_rank}-bs${bs}-demo${max_demo}"
-ckpt_path="google/rdt-1b-ft"
+run_name="cobot-${task}-${pretrained}-prelang-lora${lora_rank}-bs${bs}-demo${max_demo}"
+ckpt_path="google/${pretrained}"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
 export VISION_ENCODER_NAME="google/siglip-so400m-patch14-384"
