@@ -25,7 +25,8 @@ class HDF5VLADataset:
             data_path: str=None, 
             robot_name: str='rdt', 
             use_precomp_lang_embed: bool=False,
-            max_demo_per_task: int=None
+            max_demo_per_task: int=None,
+            instruction_mode: str="random"
     ) -> None:
         # [Modify] The path to the HDF5 dataset directory
         # Each HDF5 file contains one episode
@@ -38,6 +39,7 @@ class HDF5VLADataset:
 
         self.DATASET_NAME = "agilex"
         self.use_precomp_lang_embed = use_precomp_lang_embed
+        self.instruction_mode = instruction_mode
 
         with open(f'{RDT_CONFIG_DIR}/gripper_scale.json', 'r') as gs_file:
             self.gs_dict = json.load(gs_file)
@@ -50,7 +52,10 @@ class HDF5VLADataset:
         self.file_paths = []
         self.invalid_file_paths = []
         for root, _, files in os.walk(HDF5_DIR, followlinks=True):
-            for filename in sorted(fnmatch.filter(files, '*.hdf5'), key=lambda x: int(x.split('_')[-1].split('.')[0])):
+            for filename in sorted(
+                fnmatch.filter(files, '*.hdf5'), 
+                key=lambda x: int(x.split('_')[-1].split('.')[0])
+            ):
                 episode_id = int(filename.split('/')[-1].split('_')[-1].split('.')[0])
                 if episode_id >= max_demo_per_task:
                     continue
@@ -120,6 +125,8 @@ class HDF5VLADataset:
                 file_path = np.random.choice(self.file_paths, p=self.episode_sample_weights)
             else:
                 file_path = self.file_paths[index]
+            if instr_mode is None:
+                instr_mode = self.instruction_mode
             valid, sample = self.parse_hdf5_file(file_path, step_id=step_id, instr_mode=instr_mode) \
                 if not state_only else self.parse_hdf5_file_state_only(file_path)
             if valid:
@@ -200,12 +207,18 @@ class HDF5VLADataset:
                 instruction_type = 'simplified_instruction'
             elif instr_mode == "expanded":
                 instruction_type = 'expanded_instruction'
+            elif instr_mode == "nonsense":
+                instruction_type = None
             else:
                 instruction_type = np.random.choice([
                     'instruction', 'simplified_instruction', 'expanded_instruction'])
-            instruction = instruction_dict[instruction_type]
-            if isinstance(instruction, list):
-                instruction = np.random.choice(instruction)
+            if instruction_type is None:
+                instruction = "This is a meaningless instruction that has nothing to do with any real task and is only used to test the effect of the language instruction."
+            else:
+                instruction = instruction_dict[instruction_type]
+                if isinstance(instruction, list):
+                    instruction = np.random.choice(instruction)
+            # FIXME: use_precomp_lang_embed will cover the instr_mode and randomly sample an instruction
             # You can also use precomputed language embeddings (recommended)
             if self.use_precomp_lang_embed:
                 # Load the precomputed language embeddings

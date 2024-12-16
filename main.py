@@ -321,6 +321,13 @@ def parse_args(input_args=None):
         help="The maximum number of demonstrations per task."
     )
 
+    parser.add_argument('--instruction_mode',
+        type=str,
+        default="random",
+        required=False,
+        help="The mode of instruction generation, choose between ['random', 'nonsense']."
+    )
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:

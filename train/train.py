@@ -138,6 +138,12 @@ def train(args, logger):
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
+
+    if args.instruction_mode in ["normal", "simplified", "expanded", "nonsense"]:
+        args.precomp_lang_embed = False
+        logger.warn("The instruction mode is set to {} and args.use_precomp_lang_embed is set to False.".format(args.instruction_mode))
+    else:
+        logger.info("The instruction will be randomly sampled, and args.use_precomp_lang_embed is set to {}.".format(args.precomp_lang_embed))
     
     if args.precomp_lang_embed:
         tokenizer, text_encoder = None, None
@@ -278,6 +284,7 @@ def train(args, logger):
         data_path=args.data_path,
         robot_name=args.robot_name,
         max_demo_per_task=args.max_demo_per_task,
+        instruction_mode=args.instruction_mode
     )
     sample_dataset = VLAConsumerDataset(
         config=config["dataset"],
@@ -295,6 +302,7 @@ def train(args, logger):
         data_path=args.data_path,
         robot_name=args.robot_name,
         max_demo_per_task=args.max_demo_per_task,
+        instruction_mode=args.instruction_mode,
     )
     
     data_collator = DataCollatorForVLAConsumerDataset(tokenizer)                                                        

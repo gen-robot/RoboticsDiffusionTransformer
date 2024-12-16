@@ -6,20 +6,21 @@ export NCCL_DEBUG=INFO
 export NCCL_NVLS_ENABLE=0
 
 now="$(date +"%Y%m%d-%H%M%S")"
-lora_rank=$1
-bs=$2
-task=$3
-max_demo=$4
-pretrained=$5
+lora_rank=0
+bs=5
+task=$1
+max_demo=50
+pretrained='rdt-1b-ft'
+instr=$2
 
 # run_name="cobot-coke-rdt1b-prelang-lora${lora_rank}-bs${bs}"
 # ckpt_path="google/rdt-1b"
-run_name="cobot-${task}-${pretrained}-prelang-lora${lora_rank}-bs${bs}-demo${max_demo}"
+run_name="cobot-${task}-${pretrained}-prelang-lora${lora_rank}-bs${bs}-demo${max_demo}-${instr}"
 ckpt_path="google/${pretrained}"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
 export VISION_ENCODER_NAME="google/siglip-so400m-patch14-384"
-export OUTPUT_DIR="./checkpoints/${run_name}-${now}"
+export OUTPUT_DIR="./checkpoints/${run_name}/${now}"
 export CFLAGS="-I/usr/include"
 export LDFLAGS="-L/usr/lib/x86_64-linux-gnu"
 # export CUTLASS_PATH="/path/to/cutlass"
@@ -38,7 +39,7 @@ fi
 export WANDB_PROJECT="robotics_diffusion_transformer"
 
 if [ ! -d "$OUTPUT_DIR" ]; then
-    mkdir "$OUTPUT_DIR"
+    mkdir -p "$OUTPUT_DIR"
     echo "Folder '$OUTPUT_DIR' created"
 else
     echo "Folder '$OUTPUT_DIR' already exists"
@@ -60,6 +61,7 @@ accelerate launch main.py \
     --data_path="data/datasets/agilex/cobot_data/${task}" \
     --pretrained_model_name_or_path=${ckpt_path} \
     --max_demo_per_task=${max_demo} \
+    --instruction_mode=${instr} \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
     --pretrained_vision_encoder_name_or_path=$VISION_ENCODER_NAME \
     --output_dir=$OUTPUT_DIR \
@@ -68,7 +70,7 @@ accelerate launch main.py \
     --max_train_steps=200000 \
     --checkpointing_period=1000 \
     --sample_period=500 \
-    --checkpoints_total_limit=40 \
+    --checkpoints_total_limit=10 \
     --lr_scheduler="constant" \
     --learning_rate=1e-4 \
     --mixed_precision="bf16" \
