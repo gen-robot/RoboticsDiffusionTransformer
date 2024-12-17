@@ -14,8 +14,8 @@ SAVE_DIR = "outs/"
 # Modify this to your task name and instruction
 # TASK_NAME = "handover_pan"
 # INSTRUCTION = "Pick up the black marker on the right and put it into the packaging box on the left."
-TASK_NAME = "bi_pick_coke"
-INSTRUCTION = "Carefully pick up both soda cans using your arms with grippers, ensuring a secure hold on each can. Then, move them over to the plate and gently place them down to avoid tipping or spilling."
+TASK_NAME = "put_book"
+INSTRUCTION = "Use your right arm to pick up the book from the plate. Once you've picked up the book, move it closer to the other books already in place. Look for an empty space on the far left to place the book. If you find there is no empty space available, switch to using your left arm to carefully move the leftmost book out of the way. Then, use your right arm to place the book into the cleared space. Ensure all books are aligned properly before finishing the task."
 
 # Note: if your GPU VRAM is less than 24GB, 
 # it is recommanded to enable offloading by specifying an offload directory.

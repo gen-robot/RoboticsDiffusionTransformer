@@ -242,11 +242,13 @@ class HDF5VLADataset:
             
             # Rescale gripper to [0, 1]
             qpos = qpos / np.array(
-               [[1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[0], 1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[1]]] 
-            ) # 0.066
+               [[1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[0], 
+                 1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[1]]] 
+            )
             target_qpos = f['action'][step_id:step_id+self.CHUNK_SIZE] / np.array(
-               [[1, 1, 1, 1, 1, 1, self.gripper_action_scale[0], 1, 1, 1, 1, 1, 1, self.gripper_action_scale[1]]] 
-            ) # 0.072
+               [[1, 1, 1, 1, 1, 1, self.gripper_action_scale[0], 
+                 1, 1, 1, 1, 1, 1, self.gripper_action_scale[1]]] 
+            )
             
             # Parse the state and action
             state = qpos[step_id:step_id+1]
@@ -372,10 +374,12 @@ class HDF5VLADataset:
             
             # Rescale gripper to [0, 1]
             qpos = qpos / np.array(
-               [[1, 1, 1, 1, 1, 1, 4.7908, 1, 1, 1, 1, 1, 1, 4.7888]] 
+               [[1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[0], 
+                 1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[1]]] 
             )
-            target_qpos = f['action'][:] / np.array(
-               [[1, 1, 1, 1, 1, 1, 11.8997, 1, 1, 1, 1, 1, 1, 13.9231]] 
+            target_qpos = f['action'][step_id:step_id+self.CHUNK_SIZE] / np.array(
+               [[1, 1, 1, 1, 1, 1, self.gripper_action_scale[0], 
+                 1, 1, 1, 1, 1, 1, self.gripper_action_scale[1]]] 
             )
             
             # Parse the state and action
