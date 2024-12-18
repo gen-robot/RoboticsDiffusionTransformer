@@ -328,6 +328,18 @@ def parse_args(input_args=None):
         help="The mode of instruction generation, choose between ['random', 'nonsense']."
     )
 
+    parser.add_argument('--eef_obs',
+        action="store_true",
+        default=False,
+        help="Whether to use the end-effector observation."
+    )
+
+    parser.add_argument('--eef_action',
+        action="store_true",
+        default=False,
+        help="Whether to predict the end-effector action."
+    )
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:

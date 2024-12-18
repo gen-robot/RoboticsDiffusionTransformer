@@ -10,9 +10,11 @@ import numpy as np
 try:
     from ..configs.state_vec import STATE_VEC_IDX_MAPPING
     from ..constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
+    from .rotation_utils import quaternion_to_ortho6d
 except ImportError:
     from configs.state_vec import STATE_VEC_IDX_MAPPING
     from constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
+    from rotation_utils import quaternion_to_rotation_matrix, rotation_matrix_to_ortho6d
 
 
 class HDF5VLADataset:
@@ -26,7 +28,9 @@ class HDF5VLADataset:
             robot_name: str='rdt', 
             use_precomp_lang_embed: bool=False,
             max_demo_per_task: int=None,
-            instruction_mode: str="random"
+            instruction_mode: str="random",
+            enable_eef_obs=False,
+            enable_eef_action=False
     ) -> None:
         # [Modify] The path to the HDF5 dataset directory
         # Each HDF5 file contains one episode
@@ -40,6 +44,8 @@ class HDF5VLADataset:
         self.DATASET_NAME = "agilex"
         self.use_precomp_lang_embed = use_precomp_lang_embed
         self.instruction_mode = instruction_mode
+        self.enable_eef_obs = enable_eef_obs
+        self.enable_eef_action = enable_eef_action
 
         with open(f'{RDT_CONFIG_DIR}/gripper_scale.json', 'r') as gs_file:
             self.gs_dict = json.load(gs_file)
@@ -62,7 +68,7 @@ class HDF5VLADataset:
                 file_path = os.path.join(root, filename)
                 file_dir = os.path.dirname(file_path)
                 if self.use_precomp_lang_embed:
-                    assert os.path.exists(os.path.join(file_dir, "lang_embeds")), \
+                    assert os.path.exists(os.path.join(file_dir, "precomp_lang_embeds")), \
                         f"Language embeddings not found for {file_path} for precomputed language embeddings."
                 try:
                     f = h5py.File(file_path, 'r')
@@ -222,7 +228,7 @@ class HDF5VLADataset:
             # You can also use precomputed language embeddings (recommended)
             if self.use_precomp_lang_embed:
                 # Load the precomputed language embeddings
-                embeds_dir = os.path.join(dir_path, "lang_embeds")
+                embeds_dir = os.path.join(dir_path, "precomp_lang_embeds")
                 all_embeds = [
                     os.path.join(embeds_dir, p) for p in sorted(os.listdir(embeds_dir))
                     if p.endswith(".pt")
@@ -262,9 +268,44 @@ class HDF5VLADataset:
                     actions,
                     np.tile(actions[-1:], (self.CHUNK_SIZE-actions.shape[0], 1))
                 ], axis=0)
+
+            if self.enable_eef_obs or self.enable_eef_action:
+                if 'ee_pose' not in f['observations']:
+                    enable_eef_obs = False
+                    enable_eef_action = False
+                else:
+                    ee_pose = f['observations']['ee_pose'][:]
+                    enable_eef_obs = self.enable_eef_obs
+                    enable_eef_action = self.enable_eef_action
+
+            if enable_eef_obs:
+                ee_pose_l, ee_pose_r = ee_pose[:, :7], ee_pose[:, 7:]
+                ee_pos_l, ee_quat_l = ee_pose_l[step_id:step_id+1, :3], ee_pose_l[step_id:step_id+1, 3:]
+                ee_rot6d_l = quaternion_to_ortho6d(ee_quat_l, 'xyzw')
+                ee_pos_r, ee_quat_r = ee_pose_r[step_id:step_id+1, :3], ee_pose_r[step_id:step_id+1, 3:]
+                ee_rot6d_r = quaternion_to_ortho6d(ee_quat_r, 'xyzw')
+                eef = np.concatenate([ee_pos_l, ee_rot6d_l, ee_pos_r, ee_rot6d_r], axis=-1)
+                eef_std = np.std(eef, axis=0)
+                eef_mean = np.mean(eef, axis=0)
+                eef_norm = np.sqrt(np.mean(eef**2, axis=0))
+            else:
+                eef, eef_std, eef_mean, eef_norm = None, None, None, None
+
+            if enable_eef_action:
+                assert self.enable_eef_obs, "Enable eef observation first."
+                cur_step_id = min(step_id+1, num_steps-1) # if step_id is the last step, use the last step's eef
+                eef_actions = eef[cur_step_id:cur_step_id+self.CHUNK_SIZE] # next step's eef as current step's action
+                if eef_actions.shape[0] < self.CHUNK_SIZE:
+                    # Pad the actions using the last action
+                    eef_actions = np.concatenate([
+                        eef_actions,
+                        np.tile(eef_actions[-1:], (self.CHUNK_SIZE-eef_actions.shape[0], 1))
+                    ], axis=0)
+            else:
+                eef_actions = None
             
             # Fill the state/action into the unified vector
-            def fill_in_state(values):
+            def fill_in_state(qpos, eef=None):
                 # Target indices corresponding to your state space
                 # In this example: 6 joints + 1 gripper for each arm
                 UNI_STATE_INDICES = [
@@ -276,18 +317,34 @@ class HDF5VLADataset:
                 ] + [
                     STATE_VEC_IDX_MAPPING["right_gripper_open"]
                 ]
-                uni_vec = np.zeros(values.shape[:-1] + (self.STATE_DIM,))
-                uni_vec[..., UNI_STATE_INDICES] = values
+                uni_vec = np.zeros(qpos.shape[:-1] + (self.STATE_DIM,))
+                uni_vec[..., UNI_STATE_INDICES] = qpos
+
+                if eef is not None:
+                    UNI_EEF_INDICES = [
+                        STATE_VEC_IDX_MAPPING[f"left_eef_pos_{i}"] for i in ['x', 'y', 'z']
+                    ] + [
+                        STATE_VEC_IDX_MAPPING[f"left_eef_angle_{i}"] for i in range(6)
+                    ] + [
+                        STATE_VEC_IDX_MAPPING[f"right_eef_pos_{i}"] for i in ['x', 'y', 'z']
+                    ] + [
+                        STATE_VEC_IDX_MAPPING[f"right_eef_angle_{i}"] for i in range(6)
+                    ]
+                    uni_vec[..., UNI_EEF_INDICES] = eef
+
                 return uni_vec
-            state = fill_in_state(state)
-            state_indicator = fill_in_state(np.ones_like(state_std))
-            state_std = fill_in_state(state_std)
-            state_mean = fill_in_state(state_mean)
-            state_norm = fill_in_state(state_norm)
+            state = fill_in_state(state, eef)
+            state_indicator = fill_in_state(
+                np.ones_like(state_std), 
+                np.ones_like(eef_std) if eef is not None else None
+            )
+            state_std = fill_in_state(state_std, eef_std)
+            state_mean = fill_in_state(state_mean, eef_mean)
+            state_norm = fill_in_state(state_norm, eef_norm)
             # If action's format is different from state's,
             # you may implement fill_in_action()
             raw_actions = actions.copy()
-            actions = fill_in_state(actions)
+            actions = fill_in_state(actions, eef_actions)
             
             # Parse the images
             def parse_img(key):
@@ -377,7 +434,7 @@ class HDF5VLADataset:
                [[1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[0], 
                  1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[1]]] 
             )
-            target_qpos = f['action'][step_id:step_id+self.CHUNK_SIZE] / np.array(
+            target_qpos = f['action'][:] / np.array(
                [[1, 1, 1, 1, 1, 1, self.gripper_action_scale[0], 
                  1, 1, 1, 1, 1, 1, self.gripper_action_scale[1]]] 
             )

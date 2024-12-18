@@ -105,7 +105,9 @@ class VLAConsumerDataset(Dataset):
         data_path=None,
         robot_name='rdt',
         max_demo_per_task=100,
-        instruction_mode="random"
+        instruction_mode="random",
+        enable_eef_obs=False,
+        enable_eef_action=False,
     ):
         super(VLAConsumerDataset, self).__init__()
         
@@ -142,7 +144,9 @@ class VLAConsumerDataset(Dataset):
                 robot_name=robot_name, 
                 use_precomp_lang_embed=use_precomp_lang_embed, 
                 max_demo_per_task=max_demo_per_task,
-                instruction_mode=instruction_mode)
+                instruction_mode=instruction_mode,
+                enable_eef_obs=enable_eef_obs,
+                enable_eef_action=enable_eef_action,)
         self.use_precomp_lang_embed = use_precomp_lang_embed
         if use_precomp_lang_embed:
             self.empty_lang_embed = torch.load(f"{RDT_ROOT_DIR}/data/empty_lang_embed.pt")
@@ -374,7 +378,7 @@ class VLAConsumerDataset(Dataset):
                 if self.use_precomp_lang_embed:
                     if content["instruction"][-1] == ".":
                         content["instruction"] = content["instruction"][:-1]
-                    data_dict["lang_embed"] = torch.load(content["instruction"]) \
+                    data_dict["lang_embed"] = torch.load(content["instruction"])["embeddings"] \
                         if random.random() > self.cond_mask_prob else self.empty_lang_embed
                 else:
                     instruction = content["instruction"] \
