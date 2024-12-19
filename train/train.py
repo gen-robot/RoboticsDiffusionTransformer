@@ -141,6 +141,12 @@ def train(args, logger):
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
+
+    if args.instruction_mode in ["normal", "simplified", "expanded", "nonsense"]:
+        args.precomp_lang_embed = False
+        logger.warn("The instruction mode is set to {} and args.use_precomp_lang_embed is set to False.".format(args.instruction_mode))
+    else:
+        logger.info("The instruction will be randomly sampled, and args.use_precomp_lang_embed is set to {}.".format(args.precomp_lang_embed))
     
     if args.precomp_lang_embed:
         tokenizer, text_encoder = None, None
@@ -157,8 +163,8 @@ def train(args, logger):
         args.pretrained_model_name_or_path is not None
         and not os.path.isfile(args.pretrained_model_name_or_path)
     ):
-        logger.info("Constructing model from pretrained checkpoint.")
-        rdt = RDTRunner.from_pretrained(args.pretrained_model_name_or_path)
+        logger.info("Constructing model from pretrained checkpoint {}".format(args.pretrained_model_name_or_path))
+        rdt = RDTRunner.from_pretrained(args.pretrained_model_name_or_path, dtype=weight_dtype)
 
         if args.lora_rank > 0:
             logger.info("Applying LoRA fine-tuning with rank {}".format(args.lora_rank))
@@ -264,41 +270,40 @@ def train(args, logger):
         eps=args.adam_epsilon,
     )
     
-    # Dataset and DataLoaders creation:                                                           
-    train_dataset = VLAConsumerDataset(
-        config=config["dataset"],
-        tokenizer=tokenizer,
-        image_processor=image_processor,
-        num_cameras=config["common"]["num_cameras"],
-        img_history_size=config["common"]["img_history_size"],
-        dataset_type=args.dataset_type,
-        image_aug=args.image_aug,
-        cond_mask_prob=args.cond_mask_prob,
-        cam_ext_mask_prob=args.cam_ext_mask_prob,
-        state_noise_snr=args.state_noise_snr,
-        use_hdf5=args.load_from_hdf5,
-        use_precomp_lang_embed=args.precomp_lang_embed,
-        data_path=args.data_path,
-        robot_name=args.robot_name,
-        max_demo_per_task=args.max_demo_per_task,
-    )
-    sample_dataset = VLAConsumerDataset(
-        config=config["dataset"],
-        tokenizer=tokenizer,
-        image_processor=image_processor,
-        num_cameras=config["common"]["num_cameras"],
-        img_history_size=config["common"]["img_history_size"],
-        dataset_type=args.dataset_type,
-        image_aug=False,
-        cond_mask_prob=0,
-        cam_ext_mask_prob=-1,
-        state_noise_snr=None,
-        use_hdf5=args.load_from_hdf5,
-        use_precomp_lang_embed=args.precomp_lang_embed,
-        data_path=args.data_path,
-        robot_name=args.robot_name,
-        max_demo_per_task=args.max_demo_per_task,
-    )
+    # Dataset and DataLoaders creation:
+    def make_dataset(args, config, is_sample=False):
+        if is_sample:
+            image_aug=False
+            cond_mask_prob=0
+            cam_ext_mask_prob=-1
+            state_noise_snr=None
+        else:
+            image_aug=args.image_aug
+            cond_mask_prob=args.cond_mask_prob
+            cam_ext_mask_prob=args.cam_ext_mask_prob
+            state_noise_snr=args.state_noise_snr
+        return VLAConsumerDataset(
+            config=config["dataset"],
+            tokenizer=tokenizer,
+            image_processor=image_processor,
+            num_cameras=config["common"]["num_cameras"],
+            img_history_size=config["common"]["img_history_size"],
+            dataset_type=args.dataset_type,
+            image_aug=image_aug,
+            cond_mask_prob=cond_mask_prob,
+            cam_ext_mask_prob=cam_ext_mask_prob,
+            state_noise_snr=state_noise_snr,
+            use_hdf5=args.load_from_hdf5,
+            use_precomp_lang_embed=args.precomp_lang_embed,
+            data_path=args.data_path,
+            robot_name=args.robot_name,
+            max_demo_per_task=args.max_demo_per_task,
+            instruction_mode=args.instruction_mode,
+            enable_eef_obs=args.eef_obs,
+            enable_eef_action=args.eef_action,
+        )
+    train_dataset = make_dataset(args, config)
+    sample_dataset = make_dataset(args, config, is_sample=True)
     
     data_collator = DataCollatorForVLAConsumerDataset(tokenizer)                                                        
     
@@ -383,7 +388,7 @@ def train(args, logger):
         and os.path.isfile(args.pretrained_model_name_or_path)
     ):
         # Since EMA is deprecated, we do not load EMA from the pretrained checkpoint
-        logger.info("Loading from a pretrained checkpoint.")
+        logger.info("Loading from a pretrained checkpoint {}".format(args.pretrained_model_name_or_path))
         checkpoint = torch.load(args.pretrained_model_name_or_path)
         rdt.module.load_state_dict(checkpoint["module"])
    
@@ -489,6 +494,15 @@ def train(args, logger):
                     ema_save_path = os.path.join(save_path, f"ema")
                     accelerator.save_model(ema_rdt, ema_save_path)
                     logger.info(f"Saved state to {save_path}")
+
+                    # Remove old checkpoints and keep the last checkpoints_total_limit
+                    all_checkpoints = [d for d in os.listdir(args.output_dir) if d.startswith("checkpoint-")]
+                    if len(all_checkpoints) > args.checkpoints_total_limit:
+                        sorted_checkpoints = sorted(all_checkpoints, key=lambda x: int(x.split("-")[-1]))
+                        for ckpt in sorted_checkpoints[:-args.checkpoints_total_limit]:
+                            ckpt_path = os.path.join(args.output_dir, ckpt)
+                            logger.info(f"Removing {ckpt_path}")
+                            os.system(f"rm -rf {ckpt_path}")
 
                 if args.sample_period > 0 and global_step % args.sample_period == 0:
                     sample_loss_for_log = log_sample_res(

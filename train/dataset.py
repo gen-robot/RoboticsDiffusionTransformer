@@ -104,7 +104,10 @@ class VLAConsumerDataset(Dataset):
         use_precomp_lang_embed=False,
         data_path=None,
         robot_name='rdt',
-        max_demo_per_task=100
+        max_demo_per_task=100,
+        instruction_mode="random",
+        enable_eef_obs=False,
+        enable_eef_action=False,
     ):
         super(VLAConsumerDataset, self).__init__()
         
@@ -136,7 +139,14 @@ class VLAConsumerDataset(Dataset):
         self.use_hdf5 = use_hdf5
         self.hdf5_dataset = None
         if use_hdf5:
-            self.hdf5_dataset = HDF5VLADataset(data_path, robot_name, use_precomp_lang_embed, max_demo_per_task)
+            self.hdf5_dataset = HDF5VLADataset(
+                data_path=data_path, 
+                robot_name=robot_name, 
+                use_precomp_lang_embed=use_precomp_lang_embed, 
+                max_demo_per_task=max_demo_per_task,
+                instruction_mode=instruction_mode,
+                enable_eef_obs=enable_eef_obs,
+                enable_eef_action=enable_eef_action,)
         self.use_precomp_lang_embed = use_precomp_lang_embed
         if use_precomp_lang_embed:
             self.empty_lang_embed = torch.load(f"{RDT_ROOT_DIR}/data/empty_lang_embed.pt")
@@ -251,7 +261,10 @@ class VLAConsumerDataset(Dataset):
     
     def __getitem__(self, index):
         # For robustness, we will try to load the data until we succeed
-        while True:
+        count = 0
+        while count < 100:
+            count += 1
+            # while True:
             data_dict = None
             try:
                 if self.use_hdf5:
@@ -365,7 +378,7 @@ class VLAConsumerDataset(Dataset):
                 if self.use_precomp_lang_embed:
                     if content["instruction"][-1] == ".":
                         content["instruction"] = content["instruction"][:-1]
-                    data_dict["lang_embed"] = torch.load(content["instruction"]) \
+                    data_dict["lang_embed"] = torch.load(content["instruction"])["embeddings"] \
                         if random.random() > self.cond_mask_prob else self.empty_lang_embed
                 else:
                     instruction = content["instruction"] \
@@ -398,6 +411,8 @@ class VLAConsumerDataset(Dataset):
                 traceback.print_exc()
                 # Try incresing the index
                 index = (index + 1) % len(self)
+
+        raise RuntimeError("Failed to load sample.")
 
 
 class DataCollatorForVLAConsumerDataset(object):

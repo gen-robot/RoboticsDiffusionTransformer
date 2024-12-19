@@ -1,5 +1,6 @@
 import argparse
 import os
+from distutils.util import strtobool
 from train.train import train
 from train.eval import eval
 
@@ -327,6 +328,25 @@ def parse_args(input_args=None):
         help="The maximum number of demonstrations per task."
     )
 
+    parser.add_argument('--instruction_mode',
+        type=str,
+        default="random",
+        required=False,
+        help="The mode of instruction generation, choose between ['random', 'nonsense']."
+    )
+
+    parser.add_argument('--eef_obs',
+        type=str,
+        default='False',
+        help="Whether to use the end-effector observation."
+    )
+
+    parser.add_argument('--eef_action',
+        type=str,
+        default='False',
+        help="Whether to predict the end-effector action."
+    )
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -346,6 +366,14 @@ if __name__ == "__main__":
         setproctitle("rdt-ft")
     else:
         setproctitle(args.run_name)
+
+    if isinstance(args.eef_obs, str):
+        args.eef_obs = bool(strtobool(args.eef_obs))
+    if isinstance(args.eef_action, str):
+        args.eef_action = bool(strtobool(args.eef_action))
+
+    print("eef_obs", args.eef_obs, bool(args.eef_obs))
+    print("eef_action", args.eef_action, bool(args.eef_action))
         
     if args.eval:
         eval(args, logger)

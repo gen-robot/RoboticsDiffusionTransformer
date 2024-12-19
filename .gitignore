@@ -186,3 +186,6 @@ wandb/
 # Distributed leaning
 hostfile.txt
 .deepspeed_env
+
+# nohup
+nohup.out
