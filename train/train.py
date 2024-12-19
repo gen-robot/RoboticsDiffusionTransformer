@@ -77,6 +77,9 @@ def train(args, logger):
     # Read the config
     with open(args.config_path, "r") as fp:
         config = yaml.safe_load(fp)
+    
+    # Set action chunk size to config
+    config["common"]["action_chunk_size"] = args.chunk_size
 
     logging_dir = Path(args.output_dir, args.logging_dir)
 
