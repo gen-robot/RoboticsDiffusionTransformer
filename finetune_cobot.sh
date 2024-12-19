@@ -37,6 +37,13 @@ fi
 if [ -z "$precision" ]; then
     precision='bf16'
 fi
+if [ -z "$eef_in" ]; then
+    eef_in=False
+fi
+if [ -z "$eef_out" ]; then
+    # default boolean value for eef_out is False
+    eef_out=False
+fi
 
 # print the arguments
 echo "%%%%%% Arguments %%%%%%"
@@ -48,9 +55,11 @@ echo "pretrained: ${pretrained}"
 echo "instr: ${instr}"
 echo "mask_prob: ${mask_prob}"
 echo "precision: ${precision}"
+echo "eef_in: ${eef_in}"
+echo "eef_out: ${eef_out}"
 echo "%%%%%%%%%%%%%%%%%%%%%%%"
 
-run_name="cobot-${task}-${pretrained}-lora${lora_rank}-bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}"
+run_name="cobot-${task}-${pretrained}-lora${lora_rank}-bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}-eefi${eef_in}-eefo${eef_out}"
 ckpt_path="google/${pretrained}"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
@@ -90,6 +99,8 @@ accelerate launch main.py \
     --deepspeed="./configs/zero2.json" \
     --robot_name="cobot" \
     --precomp_lang_embed \
+    --eef_obs=${eef_in} \
+    --eef_action=${eef_out} \
     --lora_rank=${lora_rank} \
     --run_name=${run_name} \
     --data_path="data/datasets/agilex/cobot_data/${task}" \

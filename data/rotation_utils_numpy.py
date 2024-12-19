@@ -15,7 +15,7 @@ def quaternion_to_rotation_matrix(quaternion, mode='wxyz'):
     quat = normalize_vector(quaternion)
 
     if mode == 'wxyz':
-        qw = np.expand_dims(quat[...,0], axis=-1)
+        qw = np.expand_dims(quat[...,0], axis=-1) # batch*1
         qx = np.expand_dims(quat[...,1], axis=-1)
         qy = np.expand_dims(quat[...,2], axis=-1)
         qz = np.expand_dims(quat[...,3], axis=-1)
@@ -38,10 +38,10 @@ def quaternion_to_rotation_matrix(quaternion, mode='wxyz'):
     yw = qy*qw
     zw = qz*qw
     
-    matrix = [[1 - 2 * (yy + zz), 2 * (xy - zw), 2 * (xz + yw)],
-              [2 * (xy + zw), 1 - 2 * (xx + zz), 2 * (yz - xw)],
-              [2 * (xz - yw), 2 * (yz + xw), 1 - 2 * (xx + yy)]]
-    matrix = np.stack(matrix, axis=-2) # batch*3*3
+    row0 = np.concatenate([1 - 2 * (yy + zz), 2 * (xy - zw), 2 * (xz + yw)], axis=1) # batch*3
+    row1 = np.concatenate([2 * (xy + zw), 1 - 2 * (xx + zz), 2 * (yz - xw)], axis=1) # batch*3
+    row2 = np.concatenate([2 * (xz - yw), 2 * (yz + xw), 1 - 2 * (xx + yy)], axis=1) # batch*3
+    matrix = np.stack([row0, row1, row2], axis=1) # batch*3*3
 
     return matrix
 

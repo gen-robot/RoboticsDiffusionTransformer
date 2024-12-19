@@ -10,11 +10,11 @@ import numpy as np
 try:
     from ..configs.state_vec import STATE_VEC_IDX_MAPPING
     from ..constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
-    from .rotation_utils import quaternion_to_ortho6d
+    from .rotation_utils_numpy import quaternion_to_ortho6d
 except ImportError:
     from configs.state_vec import STATE_VEC_IDX_MAPPING
     from constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
-    from rotation_utils import quaternion_to_rotation_matrix, rotation_matrix_to_ortho6d
+    from data.rotation_utils_numpy import quaternion_to_ortho6d
 
 
 class HDF5VLADataset:
@@ -277,6 +277,9 @@ class HDF5VLADataset:
                     ee_pose = f['observations']['ee_pose'][:]
                     enable_eef_obs = self.enable_eef_obs
                     enable_eef_action = self.enable_eef_action
+            else:
+                enable_eef_obs = False
+                enable_eef_action = False
 
             if enable_eef_obs:
                 ee_pose_l, ee_pose_r = ee_pose[:, :7], ee_pose[:, 7:]
@@ -292,9 +295,18 @@ class HDF5VLADataset:
                 eef, eef_std, eef_mean, eef_norm = None, None, None, None
 
             if enable_eef_action:
-                assert self.enable_eef_obs, "Enable eef observation first."
-                cur_step_id = min(step_id+1, num_steps-1) # if step_id is the last step, use the last step's eef
-                eef_actions = eef[cur_step_id:cur_step_id+self.CHUNK_SIZE] # next step's eef as current step's action
+                valid_step_id = min(step_id+1, num_steps-1) # if step_id is the last step, use the last step's eef
+
+                ee_pose_l = ee_pose[valid_step_id:valid_step_id+self.CHUNK_SIZE, :7]
+                ee_pos_l, ee_quat_l = ee_pose_l[:, :3], ee_pose_l[:, 3:]
+                ee_rot6d_l = quaternion_to_ortho6d(ee_quat_l, 'xyzw')
+
+                ee_pose_r = ee_pose[valid_step_id:valid_step_id+self.CHUNK_SIZE, 7:]
+                ee_pos_r, ee_quat_r = ee_pose_r[:, :3], ee_pose_r[:, 3:]
+                ee_rot6d_r = quaternion_to_ortho6d(ee_quat_r, 'xyzw')
+
+                eef_actions = np.concatenate([ee_pos_l, ee_rot6d_l, ee_pos_r, ee_rot6d_r], axis=-1)
+                
                 if eef_actions.shape[0] < self.CHUNK_SIZE:
                     # Pad the actions using the last action
                     eef_actions = np.concatenate([
