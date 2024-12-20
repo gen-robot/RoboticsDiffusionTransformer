@@ -44,6 +44,9 @@ if [ -z "$eef_out" ]; then
     # default boolean value for eef_out is False
     eef_out=False
 fi
+if [ -z "$qvel_in" ]; then
+    qvel_in=False
+fi
 
 # print the arguments
 echo "%%%%%% Arguments %%%%%%"
@@ -57,9 +60,10 @@ echo "mask_prob: ${mask_prob}"
 echo "precision: ${precision}"
 echo "eef_in: ${eef_in}"
 echo "eef_out: ${eef_out}"
+echo "qvel_in: ${qvel_in}"
 echo "%%%%%%%%%%%%%%%%%%%%%%%"
 
-run_name="cobot-${task}-${pretrained}-lora${lora_rank}-bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}-eefi${eef_in}-eefo${eef_out}"
+run_name="cobot-${task}-${pretrained}-lora${lora_rank}-bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}-eefi${eef_in}-eefo${eef_out}-qveli${qvel_in}"
 ckpt_path="google/${pretrained}"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
@@ -101,6 +105,7 @@ accelerate launch main.py \
     --precomp_lang_embed \
     --eef_obs=${eef_in} \
     --eef_action=${eef_out} \
+    --qvel_obs=${qvel_in} \
     --lora_rank=${lora_rank} \
     --run_name=${run_name} \
     --data_path="data/datasets/agilex/cobot_data/${task}" \

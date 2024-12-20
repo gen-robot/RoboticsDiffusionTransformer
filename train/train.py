@@ -35,6 +35,7 @@ from safetensors.torch import load_model
 
 from models.ema_model import EMAModel
 from models.multimodal_encoder.siglip_encoder import SiglipVisionTower
+from models.multimodal_encoder.dinov2_encoder import DinoV2VisionTower
 from models.multimodal_encoder.t5_encoder import T5Embedder
 from models.rdt_runner import RDTRunner
 from train.dataset import DataCollatorForVLAConsumerDataset, VLAConsumerDataset
@@ -152,7 +153,13 @@ def train(args, logger):
                                 model_max_length=config["dataset"]["tokenizer_max_length"], device=accelerator.device)
         tokenizer, text_encoder = text_embedder.tokenizer, text_embedder.model
 
-    vision_encoder = SiglipVisionTower(vision_tower=args.pretrained_vision_encoder_name_or_path, args=None)
+    if "siglip" in args.pretrained_vision_encoder_name_or_path:
+        vision_encoder = SiglipVisionTower(vision_tower=args.pretrained_vision_encoder_name_or_path, args=None)
+    elif "dino" in args.pretrained_vision_encoder_name_or_path:
+        raise NotImplementedError("DinoV2 is not yet supported.")
+        vision_encoder = DinoV2VisionTower(vision_tower=args.pretrained_vision_encoder_name_or_path, args=None)
+    else:
+        raise ValueError("Vision encoder not supported:", args.pretrained_vision_encoder_name_or_path)
     image_processor = vision_encoder.image_processor
 
     # Load from a pretrained checkpoint
@@ -298,6 +305,7 @@ def train(args, logger):
             instruction_mode=args.instruction_mode,
             enable_eef_obs=args.eef_obs,
             enable_eef_action=args.eef_action,
+            enable_qvel_obs=args.qvel_obs,
         )
     train_dataset = make_dataset(args, config)
     sample_dataset = make_dataset(args, config, is_sample=True)
