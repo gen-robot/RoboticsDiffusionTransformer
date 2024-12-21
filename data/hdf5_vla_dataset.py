@@ -30,7 +30,8 @@ class HDF5VLADataset:
             max_demo_per_task: int=None,
             instruction_mode: str="random",
             enable_eef_obs=False,
-            enable_eef_action=False
+            enable_eef_action=False,
+            enable_qvel_obs=False,
     ) -> None:
         # [Modify] The path to the HDF5 dataset directory
         # Each HDF5 file contains one episode
@@ -46,6 +47,7 @@ class HDF5VLADataset:
         self.instruction_mode = instruction_mode
         self.enable_eef_obs = enable_eef_obs
         self.enable_eef_action = enable_eef_action
+        self.enable_qvel_obs = enable_qvel_obs
 
         with open(f'{RDT_CONFIG_DIR}/gripper_scale.json', 'r') as gs_file:
             self.gs_dict = json.load(gs_file)
@@ -140,7 +142,7 @@ class HDF5VLADataset:
             else:
                 index = np.random.randint(0, len(self.file_paths))
     
-    def parse_hdf5_file(self, file_path, step_id: int=None, instr_mode: str="normal"):
+    def parse_hdf5_file(self, file_path, step_id: int=None, instr_mode: str="random"):
         """[Modify] Parse a hdf5 file to generate a training sample at
             a random timestep.
 
@@ -315,9 +317,18 @@ class HDF5VLADataset:
                     ], axis=0)
             else:
                 eef_actions = None
+
+            if self.enable_qvel_obs:
+                qvel = f['observations']['qvel'][:]
+                state_qvel = qvel[step_id:step_id+1]
+                state_qvel_std = np.std(qvel, axis=0)
+                state_qvel_mean = np.mean(qvel, axis=0)
+                state_qvel_norm = np.sqrt(np.mean(qvel**2, axis=0))
+            else:
+                state_qvel, state_qvel_std, state_qvel_mean, state_qvel_norm = None, None, None, None
             
             # Fill the state/action into the unified vector
-            def fill_in_state(qpos, eef=None):
+            def fill_in_state(qpos, eef=None, qvel=None):
                 # Target indices corresponding to your state space
                 # In this example: 6 joints + 1 gripper for each arm
                 UNI_STATE_INDICES = [
@@ -344,15 +355,28 @@ class HDF5VLADataset:
                     ]
                     uni_vec[..., UNI_EEF_INDICES] = eef
 
+                if qvel is not None:
+                    UNI_QVEL_INDICES = [
+                        STATE_VEC_IDX_MAPPING[f"left_arm_joint_{i}_vel"] for i in range(6)
+                    ] + [
+                        STATE_VEC_IDX_MAPPING["left_gripper_open_vel"]
+                    ] + [
+                        STATE_VEC_IDX_MAPPING[f"right_arm_joint_{i}_vel"] for i in range(6)
+                    ] + [
+                        STATE_VEC_IDX_MAPPING["right_gripper_open_vel"]
+                    ]
+                    uni_vec[..., UNI_QVEL_INDICES] = qvel
+
                 return uni_vec
-            state = fill_in_state(state, eef)
+            state = fill_in_state(state, eef, state_qvel)
             state_indicator = fill_in_state(
                 np.ones_like(state_std), 
-                np.ones_like(eef_std) if eef is not None else None
+                np.ones_like(eef_std) if eef is not None else None,
+                np.ones_like(state_qvel_std) if state_qvel is not None else None
             )
-            state_std = fill_in_state(state_std, eef_std)
-            state_mean = fill_in_state(state_mean, eef_mean)
-            state_norm = fill_in_state(state_norm, eef_norm)
+            state_std = fill_in_state(state_std, eef_std, state_qvel_std)
+            state_mean = fill_in_state(state_mean, eef_mean, state_qvel_mean)
+            state_norm = fill_in_state(state_norm, eef_norm, state_qvel_norm)
             # If action's format is different from state's,
             # you may implement fill_in_action()
             raw_actions = actions.copy()

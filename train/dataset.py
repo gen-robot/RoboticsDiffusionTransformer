@@ -108,6 +108,7 @@ class VLAConsumerDataset(Dataset):
         instruction_mode="random",
         enable_eef_obs=False,
         enable_eef_action=False,
+        enable_qvel_obs=False,
     ):
         super(VLAConsumerDataset, self).__init__()
         
@@ -146,7 +147,8 @@ class VLAConsumerDataset(Dataset):
                 max_demo_per_task=max_demo_per_task,
                 instruction_mode=instruction_mode,
                 enable_eef_obs=enable_eef_obs,
-                enable_eef_action=enable_eef_action,)
+                enable_eef_action=enable_eef_action,
+                enable_qvel_obs=enable_qvel_obs,)
         self.use_precomp_lang_embed = use_precomp_lang_embed
         if use_precomp_lang_embed:
             self.empty_lang_embed = torch.load(f"{RDT_ROOT_DIR}/data/empty_lang_embed.pt")

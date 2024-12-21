@@ -67,6 +67,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--pretrained_vision_encoder_name_or_path",
         type=str,
+        # nargs="+",
         default=None,
         help="Pretrained vision encoder name or path if not the same as model_name",
     )
@@ -341,6 +342,12 @@ def parse_args(input_args=None):
         help="Whether to use the end-effector observation."
     )
 
+    parser.add_argument('--qvel_obs',
+        type=str,
+        default='False',
+        help="Whether to use the end-effector observation."
+    )
+
     parser.add_argument('--eef_action',
         type=str,
         default='False',
@@ -371,9 +378,12 @@ if __name__ == "__main__":
         args.eef_obs = bool(strtobool(args.eef_obs))
     if isinstance(args.eef_action, str):
         args.eef_action = bool(strtobool(args.eef_action))
+    if isinstance(args.qvel_obs, str):
+        args.qvel_obs = bool(strtobool(args.qvel_obs))
 
     print("eef_obs", args.eef_obs, bool(args.eef_obs))
     print("eef_action", args.eef_action, bool(args.eef_action))
+    print("qvel_obs", args.qvel_obs, bool(args.qvel_obs))
         
     if args.eval:
         eval(args, logger)

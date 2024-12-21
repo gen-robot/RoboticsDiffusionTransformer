@@ -33,6 +33,10 @@ if TASK_LIST is None:
     TASK_LIST = os.listdir(TARGET_DIR)
 elif not isinstance(TASK_LIST, list):
     TASK_LIST = [TASK_LIST]
+# Note: if your GPU VRAM is less than 24GB, 
+# it is recommanded to enable offloading by specifying an offload directory.
+OFFLOAD_DIR = None  # Specify your offload directory here, ensuring the directory exists.
+
 
 print("%"*30)
 print(f"Using model: {MODEL_PATH}")
@@ -49,7 +53,8 @@ def main():
     text_embedder = T5Embedder(
         from_pretrained=MODEL_PATH, 
         model_max_length=config["dataset"]["tokenizer_max_length"], 
-        device=device
+        device=device,
+        use_offload_folder=OFFLOAD_DIR
     )
     tokenizer, text_encoder = text_embedder.tokenizer, text_embedder.model
     
@@ -75,6 +80,8 @@ def main():
             instruction_dict = json.load(f_instr)
         instructions = [instruction_dict['instruction']] + instruction_dict['simplified_instruction'] + \
             instruction_dict['expanded_instruction']
+        istructions_names = ["instruction"] + ["simplified_instruction"]*len(instruction_dict['simplified_instruction']) + \
+            ["expanded_instruction"]*len(instruction_dict['expanded_instruction'])
     
         # Encode the instructions
         tokenized_res = tokenizer(
@@ -89,7 +96,7 @@ def main():
             text_embeds = text_encoder(
                 input_ids=tokens,
                 attention_mask=attn_mask
-            )["last_hidden_state"].detach().cpu()
+            ).last_hidden_state.detach().cpu()
         
         attn_mask = attn_mask.cpu().bool()
 
@@ -99,7 +106,11 @@ def main():
         # Save the embeddings for training use
         for i in range(len(instructions)):
             text_embed = text_embeds[i][attn_mask[i]]
-            save_path = os.path.join(task_path, "precomp_lang_embeds", f"lang_embed_{i}.pt")
+            save_path = os.path.join(
+                task_path, 
+                "precomp_lang_embeds",
+                f"lang_embed_{i}.pt"
+            )
             # torch.save(text_embed, save_path)
             torch.save({
                 "name": task_name,

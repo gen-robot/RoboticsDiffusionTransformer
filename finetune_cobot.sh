@@ -9,12 +9,66 @@ now="$(date +"%Y%m%d-%H%M%S")"
 lora_rank=$1
 bs=$2
 ck=$3
-task_name=$4
+task=$4
 
-# run_name="cobot-coke-rdt1b-prelang-lora${lora_rank}-bs${bs}"
-# ckpt_path="google/rdt-1b"
-run_name="cobot-coke-rdt1bft-prelang-lora${lora_rank}-bs${bs}-ck${ck}"
-ckpt_path="google/rdf-1b-ft"
+# check if arguments are exported, otherwise use default values
+if [ -z "$lora_rank" ]; then
+    lora_rank=0
+fi
+if [ -z "$bs" ]; then
+    bs=5
+fi
+if [ -z "$task" ]; then
+    task=""
+    echo "[Warning] Task not specified, will train on all tasks, continue? (y/n)"
+    read -r response
+    if [[ ! "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
+        exit 1
+    fi
+fi
+if [ -z "$max_demo" ]; then
+    max_demo=200
+fi
+if [ -z "$pretrained" ]; then
+    pretrained='rdt-1b-ft'
+fi
+if [ -z "$instr" ]; then
+    instr='random'
+fi
+if [ -z "$mask_prob" ]; then
+    mask_prob=0.1
+fi
+if [ -z "$precision" ]; then
+    precision='bf16'
+fi
+if [ -z "$eef_in" ]; then
+    eef_in=False
+fi
+if [ -z "$eef_out" ]; then
+    # default boolean value for eef_out is False
+    eef_out=False
+fi
+if [ -z "$qvel_in" ]; then
+    qvel_in=False
+fi
+
+# print the arguments
+echo "%%%%%% Arguments %%%%%%"
+echo "lora_rank: ${lora_rank}"
+echo "bs: ${bs}"
+echo "task: ${task}"
+echo "max_demo: ${max_demo}"
+echo "pretrained: ${pretrained}"
+echo "instr: ${instr}"
+echo "mask_prob: ${mask_prob}"
+echo "precision: ${precision}"
+echo "eef_in: ${eef_in}"
+echo "eef_out: ${eef_out}"
+echo "qvel_in: ${qvel_in}"
+echo "%%%%%%%%%%%%%%%%%%%%%%%"
+
+run_name="cobot-${task}-${pretrained}-lora${lora_rank}-bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}-eefi${eef_in}-eefo${eef_out}-qveli${qvel_in}"
+ckpt_path="google/${pretrained}"
 save_path="/nvme_data/liangzhi/rdt"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
@@ -54,9 +108,13 @@ fi
 accelerate launch main.py \
     --deepspeed="./configs/zero2.json" \
     --robot_name="cobot" \
+    --precomp_lang_embed \
+    --eef_obs=${eef_in} \
+    --eef_action=${eef_out} \
+    --qvel_obs=${qvel_in} \
     --lora_rank=${lora_rank} \
     --run_name=${run_name} \
-    --data_path="/nvme_data/embodied_agent/cobot_data/${task_name}" \
+    --data_path="/nvme_data/embodied_agent/cobot_data/${task}" \
     --pretrained_model_name_or_path=${ckpt_path} \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
     --pretrained_vision_encoder_name_or_path=$VISION_ENCODER_NAME \

@@ -35,4 +35,5 @@ for run_dir in dirlist:
         else:
             print(f"Checkpoint not found in {ckpt_dir}")
 
-os.system(f"tar -czvf {deploy_dir}.tar.gz {deploy_dir}")
+# print(f"Will tar the directory {deploy_dir}, containing {len(os.listdir(deploy_dir))} checkpoints")
+# os.system(f"tar -czvf {deploy_dir}.tar.gz {deploy_dir}")
