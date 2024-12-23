@@ -16,7 +16,7 @@ if [ -z "$bs" ]; then
 fi
 if [ -z "$task" ]; then
     task=""
-    echo "[Warning] Task not specified, will train on all tasks, continue? (y/n)"
+    echo "[WARNING] Task not specified, will train on all tasks, continue? (y/n)"
     read -r response
     if [[ ! "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
         exit 1
@@ -63,7 +63,7 @@ echo "eef_out: ${eef_out}"
 echo "qvel_in: ${qvel_in}"
 echo "%%%%%%%%%%%%%%%%%%%%%%%"
 
-run_name="cobot-${task}-${pretrained}-lora${lora_rank}-bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}-eefi${eef_in}-eefo${eef_out}-qveli${qvel_in}"
+run_name="cobot-task_stat-${task}-${pretrained}-lora${lora_rank}-bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}-eefi${eef_in}-eefo${eef_out}-qveli${qvel_in}"
 ckpt_path="google/${pretrained}"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"

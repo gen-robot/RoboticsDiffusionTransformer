@@ -431,7 +431,9 @@ def train(args, logger):
             resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
+    progress_bar = tqdm(range(global_step, args.max_train_steps), 
+                        disable=not accelerator.is_local_main_process,
+                        ncols=100)
     progress_bar.set_description("Steps")
 
     loss_for_log = {}

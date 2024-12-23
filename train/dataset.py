@@ -15,11 +15,13 @@ import transformers
 
 try:
     from ..constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
+    from ..data.compute_dataset_stat_hdf5 import process_hdf5_dataset
     from ..data.filelock import FileLock
     from ..data.hdf5_vla_dataset import HDF5VLADataset
     from .image_corrupt import image_corrupt
 except ImportError:
     from constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
+    from data.compute_dataset_stat_hdf5 import process_hdf5_dataset
     from data.filelock import FileLock
     from data.hdf5_vla_dataset import HDF5VLADataset
     from train.image_corrupt import image_corrupt
@@ -158,6 +160,27 @@ class VLAConsumerDataset(Dataset):
         with open(f"{RDT_CONFIG_DIR}/dataset_stat.json", 'r') as f:
             dataset_stat = json.load(f)
         self.dataset_stat = dataset_stat
+
+        if use_hdf5 and self.hdf5_dataset.get_dataset_name() not in self.dataset_stat:
+            print(f"[WARNING] Dataset stat for {self.hdf5_dataset.get_dataset_name()} not found, will compute it.")
+            _temp_dataset_stat = process_hdf5_dataset(self.hdf5_dataset)
+            self.dataset_stat[
+                _temp_dataset_stat["dataset_name"]
+            ] = _temp_dataset_stat
+            with open(f"{RDT_CONFIG_DIR}/dataset_stats/{_temp_dataset_stat['dataset_name']}.json", 'w') as f:
+                json.dump({
+                    _temp_dataset_stat['dataset_name']: _temp_dataset_stat
+                    }, f, indent=4)
+            print(f"Dataset stat for {self.hdf5_dataset.get_dataset_name()} computed and saved.")
+
+        if use_hdf5 and self.hdf5_dataset.get_dataset_name() not in self.dataset_name2id:
+            print(f"[WARNING] Dataset name {self.hdf5_dataset.get_dataset_name()} not found in the dataset name list.")
+            self.dataset_name2id[self.hdf5_dataset.get_dataset_name()] = len(self.dataset_name2id)
+            self.dataset_id2name[len(self.dataset_id2name)] = self.hdf5_dataset.get_dataset_name()
+
+        if use_hdf5 and self.hdf5_dataset.get_dataset_name() not in self.control_freq:
+            print(f"[WARNING] Control frequency for {self.hdf5_dataset.get_dataset_name()} not found, will use 0.")
+            self.control_freq[self.hdf5_dataset.get_dataset_name()] = 25 # FIXME: this is a hard-coded value for cobot magic robot
         
         self.tokenizer = tokenizer
         self.image_size = image_size
