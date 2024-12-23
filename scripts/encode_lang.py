@@ -21,7 +21,7 @@ TASK_NAME = input("Enter task name: ")
 INSTRUCTION = input("Enter instruction: ")
 
 # Note: if your GPU VRAM is less than 24GB, 
-# it is recommanded to enable offloading by specifying an offload directory.
+# it is recommended to enable offloading by specifying an offload directory.
 OFFLOAD_DIR = None  # Specify your offload directory here, ensuring the directory exists.
 
 def main():
