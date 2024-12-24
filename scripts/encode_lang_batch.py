@@ -37,6 +37,9 @@ elif not isinstance(TASK_LIST, list):
 # it is recommanded to enable offloading by specifying an offload directory.
 OFFLOAD_DIR = None  # Specify your offload directory here, ensuring the directory exists.
 
+# Note: if your GPU VRAM is less than 24GB, 
+# it is recommended to enable offloading by specifying an offload directory.
+OFFLOAD_DIR = None  # Specify your offload directory here, ensuring the directory exists.
 
 print("%"*30)
 print(f"Using model: {MODEL_PATH}")

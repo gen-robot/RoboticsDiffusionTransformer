@@ -32,6 +32,7 @@ class HDF5VLADataset:
             enable_eef_obs=False,
             enable_eef_action=False,
             enable_qvel_obs=False,
+            dataset_name="cobot"
     ) -> None:
         # [Modify] The path to the HDF5 dataset directory
         # Each HDF5 file contains one episode
@@ -42,7 +43,7 @@ class HDF5VLADataset:
         if max_demo_per_task is None:
             max_demo_per_task = 999
 
-        self.DATASET_NAME = "agilex"
+        self.DATASET_NAME = dataset_name + "_" + os.path.basename(HDF5_DIR)
         self.use_precomp_lang_embed = use_precomp_lang_embed
         self.instruction_mode = instruction_mode
         self.enable_eef_obs = enable_eef_obs
@@ -273,6 +274,7 @@ class HDF5VLADataset:
 
             if self.enable_eef_obs or self.enable_eef_action:
                 if 'ee_pose' not in f['observations']:
+                    print(f"[WARNING] ee_pose not found in {file_path}!!!!!!!!")
                     enable_eef_obs = False
                     enable_eef_action = False
                 else:
@@ -283,31 +285,28 @@ class HDF5VLADataset:
                 enable_eef_obs = False
                 enable_eef_action = False
 
-            if enable_eef_obs:
+            # FIXME: std/mean/norm should be over the whole episode instead of the current step
+            if enable_eef_obs or enable_eef_action:
                 ee_pose_l, ee_pose_r = ee_pose[:, :7], ee_pose[:, 7:]
-                ee_pos_l, ee_quat_l = ee_pose_l[step_id:step_id+1, :3], ee_pose_l[step_id:step_id+1, 3:]
+                ee_pos_l, ee_quat_l = ee_pose_l[:, :3], ee_pose_l[:, 3:]
                 ee_rot6d_l = quaternion_to_ortho6d(ee_quat_l, 'xyzw')
-                ee_pos_r, ee_quat_r = ee_pose_r[step_id:step_id+1, :3], ee_pose_r[step_id:step_id+1, 3:]
+                ee_pos_r, ee_quat_r = ee_pose_r[:, :3], ee_pose_r[:, 3:]
                 ee_rot6d_r = quaternion_to_ortho6d(ee_quat_r, 'xyzw')
-                eef = np.concatenate([ee_pos_l, ee_rot6d_l, ee_pos_r, ee_rot6d_r], axis=-1)
-                eef_std = np.std(eef, axis=0)
-                eef_mean = np.mean(eef, axis=0)
-                eef_norm = np.sqrt(np.mean(eef**2, axis=0))
+                eef_all = np.concatenate([
+                    ee_pos_l, ee_rot6d_l, ee_pos_r, ee_rot6d_r
+                    ], axis=-1)
+
+            if enable_eef_obs:
+                eef = eef_all[step_id:step_id+1]
+                eef_std = np.std(eef_all, axis=0)
+                eef_mean = np.mean(eef_all, axis=0)
+                eef_norm = np.sqrt(np.mean(eef_all**2, axis=0))
             else:
                 eef, eef_std, eef_mean, eef_norm = None, None, None, None
 
             if enable_eef_action:
                 valid_step_id = min(step_id+1, num_steps-1) # if step_id is the last step, use the last step's eef
-
-                ee_pose_l = ee_pose[valid_step_id:valid_step_id+self.CHUNK_SIZE, :7]
-                ee_pos_l, ee_quat_l = ee_pose_l[:, :3], ee_pose_l[:, 3:]
-                ee_rot6d_l = quaternion_to_ortho6d(ee_quat_l, 'xyzw')
-
-                ee_pose_r = ee_pose[valid_step_id:valid_step_id+self.CHUNK_SIZE, 7:]
-                ee_pos_r, ee_quat_r = ee_pose_r[:, :3], ee_pose_r[:, 3:]
-                ee_rot6d_r = quaternion_to_ortho6d(ee_quat_r, 'xyzw')
-
-                eef_actions = np.concatenate([ee_pos_l, ee_rot6d_l, ee_pos_r, ee_rot6d_r], axis=-1)
+                eef_actions = eef_all[valid_step_id:valid_step_id+self.CHUNK_SIZE]
                 
                 if eef_actions.shape[0] < self.CHUNK_SIZE:
                     # Pad the actions using the last action

@@ -20,7 +20,7 @@ if [ -z "$bs" ]; then
 fi
 if [ -z "$task" ]; then
     task=""
-    echo "[Warning] Task not specified, will train on all tasks, continue? (y/n)"
+    echo "[WARNING] Task not specified, will train on all tasks, continue? (y/n)"
     read -r response
     if [[ ! "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
         exit 1
@@ -51,6 +51,9 @@ fi
 if [ -z "$qvel_in" ]; then
     qvel_in=False
 fi
+if [ -z "$lr" ]; then
+    lr=1e-4
+fi
 
 # print the arguments
 echo "%%%%%% Arguments %%%%%%"
@@ -67,7 +70,7 @@ echo "eef_out: ${eef_out}"
 echo "qvel_in: ${qvel_in}"
 echo "%%%%%%%%%%%%%%%%%%%%%%%"
 
-run_name="cobot-${task}-${pretrained}-lora${lora_rank}-bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}-eefi${eef_in}-eefo${eef_out}-qveli${qvel_in}"
+run_name="cobot-task_stat-${task}-${pretrained}-lora${lora_rank}-bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}-eefi${eef_in}-eefo${eef_out}-qveli${qvel_in}-lr${lr}"
 ckpt_path="google/${pretrained}"
 save_path="/nvme_data/liangzhi/rdt"
 
@@ -108,13 +111,13 @@ fi
 accelerate launch main.py \
     --deepspeed="./configs/zero2.json" \
     --robot_name="cobot" \
-    --precomp_lang_embed \
     --eef_obs=${eef_in} \
     --eef_action=${eef_out} \
     --qvel_obs=${qvel_in} \
     --lora_rank=${lora_rank} \
     --run_name=${run_name} \
     --data_path="/nvme_data/embodied_agent/cobot_data/${task}" \
+    --learning_rate=${lr} \
     --pretrained_model_name_or_path=${ckpt_path} \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
     --pretrained_vision_encoder_name_or_path=$VISION_ENCODER_NAME \
@@ -127,7 +130,6 @@ accelerate launch main.py \
     --sample_period=500 \
     --checkpoints_total_limit=5 \
     --lr_scheduler="constant" \
-    --learning_rate=1e-4 \
     --dataloader_num_workers=8 \
     --image_aug \
     --dataset_type="finetune" \
