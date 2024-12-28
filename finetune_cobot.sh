@@ -66,7 +66,13 @@ echo "eef_out: ${eef_out}"
 echo "qvel_in: ${qvel_in}"
 echo "%%%%%%%%%%%%%%%%%%%%%%%"
 
-run_name="cobot-task_stat-${task}-${pretrained}-lora${lora_rank}-bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}-eefi${eef_in}-eefo${eef_out}-qveli${qvel_in}-lr${lr}"
+# get number of CUDA_VISIBLE_DEVICES if set else set to available GPUs
+if [ -z "$CUDA_VISIBLE_DEVICES" ]; then
+    export CUDA_VISIBLE_DEVICES=$(seq -s, 0 $(($(nvidia-smi -L | wc -l)-1)))
+fi
+ngpus=$(echo $CUDA_VISIBLE_DEVICES | tr "," "\n" | wc -l)
+
+run_name="cobot-task_stat-${task}-${pretrained}-lora${lora_rank}-n${ngpus}bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}-eefi${eef_in}-eefo${eef_out}-qveli${qvel_in}-lr${lr}"
 ckpt_path="google/${pretrained}"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
@@ -101,8 +107,8 @@ fi
 #     ...
 
 # deepspeed --hostfile=hostfile.txt
-
-accelerate launch main.py \
+# --main_process_port 0
+accelerate launch  main.py \
     --deepspeed="./configs/zero2.json" \
     --robot_name="cobot" \
     --eef_obs=${eef_in} \

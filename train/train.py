@@ -79,6 +79,10 @@ def train(args, logger):
     with open(args.config_path, "r") as fp:
         config = yaml.safe_load(fp)
 
+    if args.resume_from_checkpoint is not None and args.resume_from_checkpoint != "latest":
+        dir_path = os.path.dirname(args.resume_from_checkpoint)
+        args.output_dir = dir_path
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
@@ -401,6 +405,7 @@ def train(args, logger):
     if args.resume_from_checkpoint:
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
+            # os.system(f"cp -r {args.resume_from_checkpoint} {args.output_dir}")
         else:
             # Get the mos recent checkpoint
             dirs = os.listdir(args.output_dir)
@@ -433,9 +438,10 @@ def train(args, logger):
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(global_step, args.max_train_steps), 
                         disable=not accelerator.is_local_main_process,
-                        ncols=100)
+                        ncols=150)
     progress_bar.set_description("Steps")
 
+    best_mse_loss = 999999.9
     loss_for_log = {}
     for epoch in range(first_epoch, args.num_train_epochs):
 
@@ -503,7 +509,7 @@ def train(args, logger):
                     logger.info(f"Saved state to {save_path}")
 
                     # Remove old checkpoints and keep the last checkpoints_total_limit
-                    all_checkpoints = [d for d in os.listdir(args.output_dir) if d.startswith("checkpoint-")]
+                    all_checkpoints = [d for d in os.listdir(args.output_dir) if (d.startswith("checkpoint-") and not d.endswith("best"))]
                     if len(all_checkpoints) > args.checkpoints_total_limit:
                         sorted_checkpoints = sorted(all_checkpoints, key=lambda x: int(x.split("-")[-1]))
                         for ckpt in sorted_checkpoints[:-args.checkpoints_total_limit]:
@@ -526,7 +532,20 @@ def train(args, logger):
                     logger.info(sample_loss_for_log)
                     accelerator.log(sample_loss_for_log, step=global_step)
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+                    if sample_loss_for_log["overall_avg_sample_mse"] < best_mse_loss:
+                        best_mse_loss = sample_loss_for_log["overall_avg_sample_mse"]
+                        best_save_path = os.path.join(args.output_dir, f"checkpoint-best")
+                        accelerator.save_state(best_save_path)
+                        # write the corresponding global step to the checkpoint directory
+                        with open(os.path.join(best_save_path, "global_step.txt"), "w") as f:
+                            f.write(str(global_step))
+                        logger.info(f"Saved best state to {best_save_path}")
+
+            logs = {
+                "loss": loss.detach().item(), 
+                "lr": lr_scheduler.get_last_lr()[0],
+                "global_step": global_step,
+                "sample_step": global_step * total_batch_size,}
             progress_bar.set_postfix(**logs)
             logs.update(loss_for_log)
             # logger.info(logs)

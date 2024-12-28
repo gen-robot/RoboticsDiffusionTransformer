@@ -27,11 +27,14 @@ for run_dir in dirlist:
             latest_ckpt = sorted_checkpoints[-1]
             name = run_dir + "-" + latest_ckpt + "-" + dir
             os.makedirs(os.path.join(deploy_dir, name))
-            for files in ['config.json', 'model.safetensors', 'adapter_config.json', 'adapter_model.safetensors']:
-                if not os.path.exists(os.path.join(ckpt_dir, latest_ckpt, files)):
-                    print(f"File {files} not found in {os.path.join(ckpt_dir, latest_ckpt)}")
+            for file_name in ['config.json', 'model.safetensors', 'adapter_config.json', 'adapter_model.safetensors', 'pytorch_model.bin']:
+                if not os.path.exists(os.path.join(ckpt_dir, latest_ckpt, file_name)):
+                    print(f"File {file_name} not found in {os.path.join(ckpt_dir, latest_ckpt)}")
                     continue
-                os.system(f"cp {os.path.join(ckpt_dir, latest_ckpt, files)} {os.path.join(deploy_dir, name)}")
+                if file_name == 'pytorch_model.bin' and os.path.exists(os.path.join(deploy_dir, name, 'model.safetensors')):
+                    continue
+                os.system(f"cp {os.path.join(ckpt_dir, latest_ckpt, file_name)} {os.path.join(deploy_dir, name)}")
+            
         else:
             print(f"Checkpoint not found in {ckpt_dir}")
 
