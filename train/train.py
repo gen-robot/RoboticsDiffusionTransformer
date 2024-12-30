@@ -178,7 +178,7 @@ def train(args, logger):
             logger.info("Applying LoRA fine-tuning with rank {}".format(args.lora_rank))
             lora_config = peft.LoraConfig(
                 r=args.lora_rank,
-                lora_alpha=min(16, 16),
+                lora_alpha=min(args.lora_rank, 16),
                 lora_dropout=0.1,
                 target_modules=[
                     "ffn.fc1","ffn.fc2","qkv", "cross_attn.q","cross_attn.kv","proj",
@@ -237,6 +237,7 @@ def train(args, logger):
             for model in models:
                 model_to_save = model.module if hasattr(model, "module") else model  # type: ignore
                 if isinstance(model_to_save, type(accelerator.unwrap_model(rdt))):
+                    print(f"Saving model to {output_dir} in huggingface format to ensure compatibility.")
                     model_to_save.save_pretrained(output_dir)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
@@ -493,7 +494,7 @@ def train(args, logger):
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=args.set_grads_to_none)
-            
+
             ema_model.step(accelerator.unwrap_model(rdt))
 
             # Checks if the accelerator has performed an optimization step behind the scenes
@@ -507,6 +508,16 @@ def train(args, logger):
                     ema_save_path = os.path.join(save_path, f"ema")
                     accelerator.save_model(ema_rdt, ema_save_path)
                     logger.info(f"Saved state to {save_path}")
+
+                    if args.lora_rank > 0 and accelerator.is_main_process:
+                        adapter_tmp_dir = os.path.join(save_path, "adapter")
+                        logger.info("Saving the adapter model to {}".format(adapter_tmp_dir))
+                        accelerator.unwrap_model(rdt).save_pretrained(adapter_tmp_dir)
+                        base_rdt = RDTRunner.from_pretrained(
+                            args.pretrained_model_name_or_path, dtype=weight_dtype)
+                        merged_rdt = peft.PeftModel.from_pretrained(base_rdt, adapter_tmp_dir)
+                        merged_rdt = merged_rdt.merge_and_unload()
+                        merged_rdt.save_pretrained(os.path.join(save_path, "merged"))
 
                     # Remove old checkpoints and keep the last checkpoints_total_limit
                     all_checkpoints = [d for d in os.listdir(args.output_dir) if (d.startswith("checkpoint-") and not d.endswith("best"))]
