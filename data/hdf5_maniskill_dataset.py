@@ -1,4 +1,10 @@
 import os
+import sys
+
+if __name__=="__main__":
+    project_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    sys.path.append(project_path)
+
 import h5py
 import yaml
 import numpy as np
@@ -31,19 +37,44 @@ def interpolate_action_sequence(action_sequence, target_size):
     return action_sequence_new
 
 
+DATASET_STATS = {'state_min': [-0.7463043928146362, -0.0801204964518547, -0.4976441562175751, -2.657780647277832, -0.5742632150650024, 1.8309762477874756, -2.2423808574676514, 0.0, 0.0], 
+                 'state_max': [0.7645499110221863, 1.4967026710510254, 0.4650936424732208, -0.3866899907588959, 0.5505855679512024, 3.2900545597076416, 2.5737812519073486, 0.03999999910593033, 0.03999999910593033], 
+                 'action_min': [-0.7472005486488342, -0.08631071448326111, -0.4995281398296356, -2.658363103866577, -0.5751323103904724, 1.8290787935256958, -2.245187997817993, -1.0], 
+                 'action_max': [0.7654682397842407, 1.4984270334243774, 0.46786263585090637, -0.38181185722351074, 0.5517147779464722, 3.291581630706787, 2.575840711593628, 1.0], 
+                 'action_std': [0.2199309915304184, 0.18780815601348877, 0.13044124841690063, 0.30669933557510376, 0.1340624988079071, 0.24968451261520386, 0.9589747190475464, 0.9827960729598999], 
+                 'action_mean': [-0.00885344110429287, 0.5523102879524231, -0.007564723491668701, -2.0108158588409424, 0.004714342765510082, 2.615924596786499, 0.08461848646402359, -0.19301606714725494]}
+
+
 class HDF5VLADataset:
     """
     This class is used to sample episodes from the embodiment dataset
     stored in HDF5 files.
     """
-    def __init__(self):
+    def __init__(self, type="all", 
+                 recompute_normalization=False,
+                 with_other_task=True):
         # The name of your dataset
         self.DATASET_NAME = "agilex"
 
-        self.data_dir = "data/datasets/rdt-ft-data/demo_1k"
+        self.data_dir = "/nvme0n1/rdt/maniskill_data/demo_1k"
         self.tasks = os.listdir(self.data_dir)
+
         # Multiple tasks
-        self.tasks = ['PickCube-v1', 'StackCube-v1', 'PlugCharger-v1', 'PushCube-v1', 'PegInsertionSide-v1']
+        self.type = type
+        assert self.type in ["all", "original", "only_correction", "mix"]
+        if with_other_task:
+            self.tasks = ['PickCube-v1', 
+                          'StackCube-v1', 
+                          'PlugCharger-v1', 
+                          'PushCube-v1', 
+                          'PegInsertionSide-v1']
+        else:
+            self.tasks = ['StackCube-v1']
+        if self.type == "all" or self.type == "mix":
+            self.tasks.append('StackCube-v2')
+        if self.type == "all" or self.type == "only_correction":
+            self.tasks.append('StackCube-v1-correction')
+        
         # Load configuration from YAML file
         with open('configs/base.yaml', 'r') as file:
             config = yaml.safe_load(file)
@@ -51,7 +82,20 @@ class HDF5VLADataset:
         self.IMG_HISTORY_SIZE = config['common']['img_history_size']
         self.STATE_DIM = config['common']['state_dim']
 
-        self.num_episode_per_task = 1000
+        self.task_demo_num = {
+            "PegInsertionSide-v1": 1000,
+            "PickCube-v1": 1000,
+            "StackCube-v1": 1000,
+            "PlugCharger-v1": 1000,
+            "PushCube-v1": 1000,
+            "StackCube-v2": 500,
+            "StackCube-v1-correction": 1000,
+        }
+
+        self.sum_demo_num = 0
+        for task in self.tasks:
+            self.sum_demo_num += self.task_demo_num[task]
+
         self.img = []
         self.state = []
         self.action = []
@@ -63,33 +107,53 @@ class HDF5VLADataset:
                 trajs = f.keys() #  traj_0, traj_1,
                 # sort by the traj number
                 trajs = sorted(trajs, key=lambda x: int(x.split('_')[-1]))
+                max_index = self.task_demo_num[task]
                 for traj in trajs:
+
+                    max_index -= 1
+                    if max_index < 0:
+                        break
+
                     # images = f[traj]['obs']['sensor_data']['base_camera']['rgb'][:]
                     states = f[traj]['obs']['agent']['qpos'][:]
                     actions = f[traj]['actions'][:]
 
+                    if task == "StackCube-v1-correction" or task == "StackCube-v2":
+                        states = states[1:]
+                        actions = actions[1:]
+
                     self.state.append(states)
                     self.action.append(actions)
                     # self.img.append(images)
-        
-        self.state_min = np.concatenate(self.state).min(axis=0)
-        self.state_max = np.concatenate(self.state).max(axis=0)
-        self.action_min = np.concatenate(self.action).min(axis=0)
-        self.action_max = np.concatenate(self.action).max(axis=0)
-        self.action_std = np.concatenate(self.action).std(axis=0)
-        self.action_mean = np.concatenate(self.action).mean(axis=0)
-                    
+
+        if recompute_normalization:
+            self.state_min = np.concatenate(self.state).min(axis=0)
+            self.state_max = np.concatenate(self.state).max(axis=0)
+            self.action_min = np.concatenate(self.action).min(axis=0)
+            self.action_max = np.concatenate(self.action).max(axis=0)
+            self.action_std = np.concatenate(self.action).std(axis=0)
+            self.action_mean = np.concatenate(self.action).mean(axis=0)
+        else:
+            self.state_min = np.array(DATASET_STATS['state_min'])
+            self.state_max = np.array(DATASET_STATS['state_max'])
+            self.action_min = np.array(DATASET_STATS['action_min'])
+            self.action_max = np.array(DATASET_STATS['action_max'])
+            self.action_std = np.array(DATASET_STATS['action_std'])
+            self.action_mean = np.array(DATASET_STATS['action_mean'])
+
         self.task2lang = {
             "PegInsertionSide-v1": "Pick up a orange-white peg and insert the orange end into the box with a hole in it.",
             "PickCube-v1": "Grasp a red cube and move it to a target goal position.",
             "StackCube-v1":  "Pick up a red cube and stack it on top of a green cube and let go of the cube without it falling.",
             "PlugCharger-v1": "Pick up one of the misplaced shapes on the board/kit and insert it into the correct empty slot.",
-            "PushCube-v1": "Push and move a cube to a goal region in front of it."
+            "PushCube-v1": "Push and move a cube to a goal region in front of it.",
+            "StackCube-v2":  "Pick up a red cube and stack it on top of a green cube and let go of the cube without it falling.",
+            "StackCube-v1-correction":  "Mission failure detected! Re-pick up the red cube first. After that continue to tack it on top of a green cube.",
         }
 
     def __len__(self):
         # Assume each file contains 100 episodes
-        return len(self.tasks) * self.num_episode_per_task
+        return self.sum_demo_num
 
     def get_dataset_name(self):
         return self.DATASET_NAME
@@ -117,6 +181,28 @@ class HDF5VLADataset:
             else:
                 index = np.random.randint(0, self.__len__())
 
+    def get_index(self, index):
+        """
+        Get the task index and the inner index of the task.
+
+        Args:
+            index (int): The index of the episode.
+
+        Returns:
+            task_index (int): The index of the task.
+            task_inner_index (int): The inner index of the task.
+        """
+        task_index = 0
+        task_inner_index = index
+
+        for task in self.tasks:
+            if task_inner_index < self.task_demo_num[task]:
+                break
+            task_inner_index -= self.task_demo_num[task]
+            task_index += 1
+
+        return task_index, task_inner_index
+
     def parse_hdf5_file(self, index):
         """
         Parse an HDF5 file to generate a training sample at a random timestep.
@@ -130,9 +216,8 @@ class HDF5VLADataset:
         """
         num_steps = len(self.action[index])
         step_index = np.random.randint(0, num_steps)
-        task_index = index // self.num_episode_per_task
+        task_index, task_inner_index = self.get_index(index)
         language = self.task2lang[self.tasks[task_index]]
-        task_inner_index = index % self.num_episode_per_task
         # Skip these episodes since in the eef version dataset they are invalid.
         if self.tasks[task_index] == 'PegInsertionSide-v1' and task_inner_index > 400:
             return False, None
@@ -230,13 +315,15 @@ class HDF5VLADataset:
 if __name__ == "__main__":
     from PIL import Image
     
-    ds = HDF5VLADataset()
+    ds = HDF5VLADataset(type="original")
 
     json_data = {
         'state_min': ds.state_min.tolist(),
         'state_max': ds.state_max.tolist(),
         'action_min': ds.action_min.tolist(),
         'action_max': ds.action_max.tolist(),
+        'action_std': ds.action_std.tolist(),
+        'action_mean': ds.action_mean.tolist(),
     }
     print(json_data)
 

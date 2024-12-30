@@ -82,11 +82,11 @@ def check_target(info, flag):
         return info["is_cubeA_grasped"]
 
 
-def save_data(save_path, count, obs_image_array, proprio_array, action_array):
+def save_data_old(save_path, count, obs_image_array, proprio_array, action_array):
     data_size = len(action_array)
     data_dict = {
         '/observations/qpos': [],
-        '/observations/images/front': [],
+        '/observations/images/cam_high': [],
         '/action': [],
     }
 
@@ -99,7 +99,7 @@ def save_data(save_path, count, obs_image_array, proprio_array, action_array):
         proprio = proprio_array[i]
         front_image = obs_image_array[i]
 
-        data_dict['/observations/images/front'].append(compress_img(front_image))
+        data_dict['/observations/images/cam_high'].append(compress_img(front_image))
         if isinstance(proprio, torch.Tensor):
             proprio = proprio.cpu().numpy()
         data_dict['/observations/qpos'].append(proprio[0])
@@ -114,16 +114,63 @@ def save_data(save_path, count, obs_image_array, proprio_array, action_array):
 
         obs = root.create_group('observations')
         image = obs.create_group('images')
-        _ = image.create_dataset('front', (data_size, ), dtype=h5py.vlen_dtype(np.dtype('uint8')))
+        _ = image.create_dataset('cam_high', (data_size, ), dtype=h5py.vlen_dtype(np.dtype('uint8')))
 
         _ = obs.create_dataset('qpos', (data_size, 8), dtype=np.float32)
         _ = root.create_dataset('action', (data_size, 8), dtype=np.float32)
 
-        root['/observations/images/front'][...] = data_dict['/observations/images/front']
+        root['/observations/images/cam_high'][...] = data_dict['/observations/images/cam_high']
         root['/observations/qpos'][...] = data_dict['/observations/qpos']
         root['/action'][...] = data_dict['/action']
     
     # print(f'\033[32m\nSaving: {time.time() - t0:.1f} secs. %s \033[0m\n'%save_path)
+
+def save_data(save_path, count, obs_image_array, proprio_array, action_array):
+    file_path = os.path.join(save_path, 'motionplanning', 'data.h5')
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    
+    data_size = len(action_array)
+    for i in range(data_size):
+        action = action_array[i]
+        proprio = proprio_array[i]
+
+        if isinstance(proprio, torch.Tensor):
+            proprio = proprio.cpu().numpy()
+        proprio_array[i] = proprio[0]
+        if isinstance(action, torch.Tensor):
+            action = action.cpu().numpy()
+        action_array[i] = action
+
+    count -= 1
+
+    if count == 0:
+        with h5py.File(file_path, 'w') as f:
+            traj = f.create_group(f'traj_{count}')
+
+            traj.create_group("obs").create_group("agent").create_dataset('qpos', data=np.array(proprio_array))
+            traj.create_dataset('actions', data=np.array(action_array))
+    else:
+        with h5py.File(file_path, 'a') as f:
+            traj = f.create_group(f'traj_{count}')
+
+            traj.create_group("obs").create_group("agent").create_dataset('qpos', data=np.array(proprio_array))
+            traj.create_dataset('actions', data=np.array(action_array))
+    
+    count_head = count // 100
+    count_tail = count % 100
+    image_save_path = os.path.join(save_path, 'motionplanning', str(count_head), str(count_tail))
+
+    if not os.path.exists(image_save_path):
+        os.makedirs(image_save_path)
+    else:
+        for f in os.listdir(image_save_path):
+            file_path = os.path.join(image_save_path, f)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+
+    for i, img in enumerate(obs_image_array):
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        cv2.imwrite(os.path.join(image_save_path, f"{i}.png"), img_rgb)
 
 def main(args):
     env_id = args.env_id
@@ -165,8 +212,8 @@ def main(args):
     Path(render_dir).mkdir(parents=True, exist_ok=True)
 
     base_seed = 20241201
-    total_episodes = 2000 # Number of correction we collect
-    MAX_EPISODE_STEPS = 2000
+    total_episodes = 3000 # Number of correction we collect
+    MAX_EPISODE_STEPS = 500
     success_count = 0  
     
     use_correction_count = 0
@@ -178,8 +225,8 @@ def main(args):
 
     data_root = "/nvme0n1/rdt/datas/StackCube-v1/"
     normal_success_demo_path = os.path.join(data_root, "normal_success_demo")
-    correction_success_demo_path = os.path.join(data_root, "correction_success_demo")
-    correction_process_path = os.path.join(data_root, "correction_process")
+    correction_success_demo_path = "/nvme0n1/rdt/maniskill_data/demo_1k/StackCube-v2/"
+    correction_process_path = "/nvme0n1/rdt/maniskill_data/demo_1k/StackCube-v1-correction/"
     correction_success_render_path = os.path.join(data_root, "correction_success_render")
     if not os.path.exists(normal_success_demo_path):
         os.makedirs(normal_success_demo_path)
@@ -251,11 +298,11 @@ def main(args):
                     action[7] = 1.0
 
                     obs_image_array.append(img)
-                    proprio_array.append(proprio)
+                    proprio_array.append(obs['agent']['qpos'])
                     action_array.append(action)
 
                     correction_image_array.append(img)
-                    correction_proprio_array.append(proprio)
+                    correction_proprio_array.append(obs['agent']['qpos'])
                     correction_action_array.append(action)
 
                     obs, reward, terminated, truncated, info = env.step(action)
@@ -295,7 +342,7 @@ def main(args):
                     print("Failed to compute target action")
                     break
                 
-                ik_steps = 44
+                ik_steps = 32
                 actions = torch.zeros((ik_steps, 8), dtype=torch.float32, device=policy.device)
 
                 for i in range(ik_steps - 2):
@@ -310,11 +357,11 @@ def main(args):
                     action = actions[idx]
                     
                     obs_image_array.append(img)
-                    proprio_array.append(proprio)
+                    proprio_array.append(obs['agent']['qpos'])
                     action_array.append(action)
 
                     correction_image_array.append(img)
-                    correction_proprio_array.append(proprio)
+                    correction_proprio_array.append(obs['agent']['qpos'])
                     correction_action_array.append(action)
 
                     obs, reward, terminated, truncated, info = env.step(action)
@@ -354,11 +401,11 @@ def main(args):
                         action = actions[idx]
 
                         obs_image_array.append(img)
-                        proprio_array.append(proprio)
+                        proprio_array.append(obs['agent']['qpos'])
                         action_array.append(action)
 
                         correction_image_array.append(img)
-                        correction_proprio_array.append(proprio)
+                        correction_proprio_array.append(obs['agent']['qpos'])
                         correction_action_array.append(action)
 
                         obs, reward, terminated, truncated, info = env.step(action)
@@ -384,13 +431,13 @@ def main(args):
             images = [Image.fromarray(arr) if arr is not None else None
                     for arr in image_arrs]
             actions = policy.step(proprio, images, text_embed).squeeze(0).cpu().numpy()
-            # Take 8 steps since RDT is trained to predict interpolated 64 steps(actual 14 steps)
-            # actions = actions[::4, :]
+            # Take 8 steps since RDT is trained to predict interpolated 64 steps(actual 16 steps)
+            actions = actions[::4, :]
             for idx in range(actions.shape[0]):
                 action = actions[idx]
 
                 obs_image_array.append(img)
-                proprio_array.append(proprio)
+                proprio_array.append(obs['agent']['qpos'])
                 action_array.append(action)
 
                 obs, reward, terminated, truncated, info = env.step(action)
@@ -430,12 +477,6 @@ def main(args):
 
         if is_success == 1 and is_correction == 0:
             normal_success_demo_count += 1
-            if normal_success_demo_count <= 500:
-                save_data(normal_success_demo_path,
-                        normal_success_demo_count,
-                        obs_image_array,
-                        proprio_array,
-                        action_array)
         elif is_success == 1 and is_correction == 1:
             correction_success_demo_count += 1
             save_mp4(

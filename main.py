@@ -3,6 +3,7 @@ import os
 from distutils.util import strtobool
 from train.train import train
 from train.eval import eval
+from train.train_maniskill import train as train_maniskill
 
 from accelerate.logging import get_logger
 from setproctitle import setproctitle
@@ -354,6 +355,9 @@ def parse_args(input_args=None):
         help="Whether to predict the end-effector action."
     )
 
+    parser.add_argument("--maniskill", action="store_true", help="Whether to run the maniskill model.")
+    parser.add_argument("--maniskill_data_type", type=str, default="all", help="The type of data to use for maniskill model.")
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -387,5 +391,7 @@ if __name__ == "__main__":
         
     if args.eval:
         eval(args, logger)
-    else:
+    elif not args.maniskill:
         train(args, logger)
+    else:
+        train_maniskill(args, logger)
