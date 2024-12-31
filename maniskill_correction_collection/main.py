@@ -223,10 +223,10 @@ def main(args):
     ik_solver = IKSolver(env.agent.robot)
     to_base = env.agent.robot.pose.inv()
 
-    data_root = "/nvme0n1/rdt/datas/StackCube-v1/"
+    data_root = "/nvme0n1/rdt/datas/StackCube-v1-new/"
     normal_success_demo_path = os.path.join(data_root, "normal_success_demo")
-    correction_success_demo_path = "/nvme0n1/rdt/maniskill_data/demo_1k/StackCube-v2/"
-    correction_process_path = "/nvme0n1/rdt/maniskill_data/demo_1k/StackCube-v1-correction/"
+    correction_success_demo_path = "/nvme0n1/rdt/maniskill_data/demo_new/StackCube-v2/"
+    correction_process_path = "/nvme0n1/rdt/maniskill_data/demo_new/StackCube-v1-correction/"
     correction_success_render_path = os.path.join(data_root, "correction_success_render")
     if not os.path.exists(normal_success_demo_path):
         os.makedirs(normal_success_demo_path)
@@ -466,11 +466,11 @@ def main(args):
                         condition_check_steps = 2
                         do_ik = True
         
-        save_mp4(
-            f"{render_dir}/{episode}.mp4",
-            video_frames,
-            fps=30,
-        )
+        # save_mp4(
+        #     f"{render_dir}/{episode}.mp4",
+        #     video_frames,
+        #     fps=30,
+        # )
         print(f"Trial {episode+1} finished, success: {info['success']}, steps: {global_steps}, is_correction: {is_correction}, is_success: {is_success}")
         use_correction_count += is_correction
         correction_success_count += is_success * is_correction

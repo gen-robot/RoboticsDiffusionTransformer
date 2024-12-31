@@ -110,7 +110,7 @@ def main(args):
         pretrained=pretrained_path,
         pretrained_text_encoder_name_or_path=pretrained_text_encoder_name_or_path,
         pretrained_vision_encoder_name_or_path=pretrained_vision_encoder_name_or_path,
-        type=args.type,
+        type="original",
     )
 
     text_embed_name = os.path.join(args.lang_embeds_path, f'text_embed_{env_id}.pt')
@@ -128,13 +128,15 @@ def main(args):
         text_embed_correction = policy.encode_instruction(task2lang["StackCube-v1-correction"])
         torch.save(text_embed_correction, text_embed_correction_name)
 
-    render_dir = f"./outs/render/correction-{env_id}/"
+    render_dir = f"./outs/render/correction-{env_id}-{args.type}/"
     Path(render_dir).mkdir(parents=True, exist_ok=True)
 
     base_seed = 12345678
-    total_episodes = 25 # Number of correction we collect
-    MAX_EPISODE_STEPS = 500
+    total_episodes = 100 # Number of correction we collect
+    MAX_EPISODE_STEPS = 700
     success_count = 0  
+    do_correction_count = 0
+    correction_success_count = 0
 
     import tqdm
     for episode in tqdm.trange(total_episodes):
@@ -155,6 +157,8 @@ def main(args):
         do_correction_period = 0
         condition_flag = 1
         condition_check_steps = 6
+        is_success = False
+        is_correction = False
 
         while global_steps < MAX_EPISODE_STEPS and not done:
 
@@ -187,13 +191,17 @@ def main(args):
                     assert "success" in info, sorted(info.keys())
                     if info['success']:
                         success_count += 1
+                        is_success = True
                         done = True
                         break 
             
+            if do_correction_period > 0:
+                do_correction_period -= 1
+
             if args.correction:
                 if do_correction_period == 0:
                     condition_check_steps -= 1
-                if condition_check_steps <= 0:
+                if condition_check_steps < 0:
                     reach_target = check_target(info, condition_flag)
                     if not reach_target:
                         if condition_flag == 2 and info["is_cubeA_grasped"]:
@@ -203,6 +211,7 @@ def main(args):
                             condition_flag = 1
                             condition_check_steps = 2
                             do_correction_period = 4
+                            is_correction = True
         
         save_mp4(
             f"{render_dir}/{episode}.mp4",
@@ -211,10 +220,33 @@ def main(args):
         )
         print(f"Trial {episode+1} finished, success: {info['success']}, steps: {global_steps}")
 
-    success_rate = success_count / total_episodes * 100
-    print(f"Success rate: {success_rate}%")
-    env.close()
+        if is_correction:
+            do_correction_count += 1
+            if is_success:
+                correction_success_count += 1
 
+        
+        success_rate = success_count / (episode + 1) * 100
+
+        correction_rate = None
+        if do_correction_count > 0:
+            correction_success_rate = correction_success_count / do_correction_count * 100
+            correction_rate = do_correction_count / (episode + 1) * 100
+
+        success_rate_file = f"{render_dir}/success_rate.txt"
+        with open(success_rate_file, "w") as f:
+            f.write(f"Success rate: {success_rate}%\n")
+            f.write(f"Correction rate: {correction_rate}%\n")
+            if correction_rate is not None:
+                f.write(f"Correction success rate: {correction_rate}%\n")
+            else:
+                f.write("Correction success rate: N/A\n")
+
+    print(f"Success rate: {success_rate}%")
+    print(f"Correction rate: {correction_rate}%")
+    print(f"Correction success rate: {correction_success_rate}%")
+    
+    env.close()
 
 
 if __name__=="__main__":
