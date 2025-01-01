@@ -74,7 +74,7 @@ class HDF5VLADataset:
                     assert os.path.exists(os.path.join(file_dir, "precomp_lang_embeds")), \
                         f"Language embeddings not found for {file_path} for precomputed language embeddings."
                 try:
-                    f = h5py.File(file_path, 'r')
+                    f = h5py.File(file_path, 'r', swmr=True)
                     self.file_paths.append(file_path)
                     f.close()
                 except:
@@ -182,7 +182,7 @@ class HDF5VLADataset:
                     "cam_right_wrist_mask": ndarray
                 } or None if the episode is invalid.
         """
-        with h5py.File(file_path, 'r') as f:
+        with h5py.File(file_path, 'r', swmr=True) as f:
             qpos = f['observations']['qpos'][:]
             num_steps = qpos.shape[0]
             # [Optional] We drop too-short episode
@@ -231,7 +231,7 @@ class HDF5VLADataset:
             # You can also use precomputed language embeddings (recommended)
             if self.use_precomp_lang_embed:
                 # Load the precomputed language embeddings
-                embeds_dir = os.path.join(dir_path, "precomp_lang_embeds")
+                embeds_dir = os.path.join(dir_path, "precomp_lang_embeds", instruction_type)
                 all_embeds = [
                     os.path.join(embeds_dir, p) for p in sorted(os.listdir(embeds_dir))
                     if p.endswith(".pt")
@@ -447,7 +447,7 @@ class HDF5VLADataset:
                     "action": ndarray,          # action[:], (T, STATE_DIM).
                 } or None if the episode is invalid.
         """
-        with h5py.File(file_path, 'r') as f:
+        with h5py.File(file_path, 'r', swmr=True) as f:
             qpos = f['observations']['qpos'][:]
             num_steps = qpos.shape[0]
             # [Optional] We drop too-short episode

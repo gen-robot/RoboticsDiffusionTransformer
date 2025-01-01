@@ -145,8 +145,8 @@ def train(args, logger):
         weight_dtype = torch.bfloat16
 
     if args.instruction_mode in ["normal", "simplified", "expanded", "nonsense"]:
-        args.precomp_lang_embed = False
-        logger.warn("The instruction mode is set to {} and args.use_precomp_lang_embed is set to False.".format(args.instruction_mode))
+        # args.precomp_lang_embed = False
+        logger.warn("The instruction mode is set to {}.".format(args.instruction_mode))
     else:
         logger.info("The instruction will be randomly sampled, and args.use_precomp_lang_embed is set to {}.".format(args.precomp_lang_embed))
     
@@ -220,15 +220,15 @@ def train(args, logger):
         )
         
                                                                        
-    ema_rdt = copy.deepcopy(rdt)
-    ema_model = EMAModel(
-        ema_rdt,
-        update_after_step=config["model"]["ema"]["update_after_step"],
-        inv_gamma=config["model"]["ema"]["inv_gamma"],
-        power=config["model"]["ema"]["power"],
-        min_value=config["model"]["ema"]["min_value"],
-        max_value=config["model"]["ema"]["max_value"]
-    )
+    # ema_rdt = copy.deepcopy(rdt)
+    # ema_model = EMAModel(
+    #     ema_rdt,
+    #     update_after_step=config["model"]["ema"]["update_after_step"],
+    #     inv_gamma=config["model"]["ema"]["inv_gamma"],
+    #     power=config["model"]["ema"]["power"],
+    #     min_value=config["model"]["ema"]["min_value"],
+    #     max_value=config["model"]["ema"]["max_value"]
+    # )
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     # which ensure saving model in huggingface format (config.json + pytorch_model.bin)
@@ -357,7 +357,7 @@ def train(args, logger):
         rdt, optimizer, train_dataloader, sample_dataloader, lr_scheduler                   
     )
 
-    ema_rdt.to(accelerator.device, dtype=weight_dtype)
+    # ema_rdt.to(accelerator.device, dtype=weight_dtype)
 
     if text_encoder is not None:
         text_encoder.to(accelerator.device, dtype=weight_dtype)
@@ -408,7 +408,7 @@ def train(args, logger):
             path = os.path.basename(args.resume_from_checkpoint)
             # os.system(f"cp -r {args.resume_from_checkpoint} {args.output_dir}")
         else:
-            # Get the mos recent checkpoint
+            # Get the most recent checkpoint
             dirs = os.listdir(args.output_dir)
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
@@ -429,7 +429,7 @@ def train(args, logger):
                 checkpoint = torch.load(os.path.join(args.output_dir, path, "pytorch_model", "mp_rank_00_model_states.pt"))
                 rdt.module.load_state_dict(checkpoint["module"])
                 
-            load_model(ema_rdt, os.path.join(args.output_dir, path, "ema", "model.safetensors"))
+            # load_model(ema_rdt, os.path.join(args.output_dir, path, "ema", "model.safetensors"))
             global_step = int(path.split("-")[1])
 
             resume_global_step = global_step * args.gradient_accumulation_steps
@@ -495,7 +495,7 @@ def train(args, logger):
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=args.set_grads_to_none)
 
-            ema_model.step(accelerator.unwrap_model(rdt))
+            # ema_model.step(accelerator.unwrap_model(rdt))
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -505,8 +505,8 @@ def train(args, logger):
                 if global_step % args.checkpointing_period == 0:
                     save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                     accelerator.save_state(save_path)
-                    ema_save_path = os.path.join(save_path, f"ema")
-                    accelerator.save_model(ema_rdt, ema_save_path)
+                    # ema_save_path = os.path.join(save_path, f"ema")
+                    # accelerator.save_model(ema_rdt, ema_save_path)
                     logger.info(f"Saved state to {save_path}")
 
                     if args.lora_rank > 0 and accelerator.is_main_process:
@@ -518,6 +518,9 @@ def train(args, logger):
                         merged_rdt = peft.PeftModel.from_pretrained(base_rdt, adapter_tmp_dir)
                         merged_rdt = merged_rdt.merge_and_unload()
                         merged_rdt.save_pretrained(os.path.join(save_path, "merged"))
+
+                        del base_rdt
+                        del merged_rdt
 
                     # Remove old checkpoints and keep the last checkpoints_total_limit
                     all_checkpoints = [d for d in os.listdir(args.output_dir) if (d.startswith("checkpoint-") and not d.endswith("best"))]
@@ -553,6 +556,7 @@ def train(args, logger):
                         logger.info(f"Saved best state to {best_save_path}")
 
             logs = {
+                "epoch": epoch,
                 "loss": loss.detach().item(), 
                 "lr": lr_scheduler.get_last_lr()[0],
                 "global_step": global_step,
@@ -564,13 +568,14 @@ def train(args, logger):
 
             if global_step >= args.max_train_steps:
                 break
+                
 
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         accelerator.unwrap_model(rdt).save_pretrained(args.output_dir)
-        ema_save_path = os.path.join(args.output_dir, f"ema")
-        accelerator.save_model(ema_rdt, ema_save_path)
+        # ema_save_path = os.path.join(args.output_dir, f"ema")
+        # accelerator.save_model(ema_rdt, ema_save_path)
         
         logger.info(f"Saved Model to {args.output_dir}")
 

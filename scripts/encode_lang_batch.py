@@ -105,6 +105,8 @@ def main():
 
         if not os.path.exists(os.path.join(task_path, "precomp_lang_embeds")):
             os.makedirs(os.path.join(task_path, "precomp_lang_embeds"))
+        for instr_mode in ["instruction", "simplified_instruction", "expanded_instruction"]:
+            os.makedirs(os.path.join(task_path, "precomp_lang_embeds", instr_mode), exist_ok=True)
 
         # Save the embeddings for training use
         for i in range(len(instructions)):
@@ -112,6 +114,7 @@ def main():
             save_path = os.path.join(
                 task_path, 
                 "precomp_lang_embeds",
+                istructions_names[i],
                 f"lang_embed_{i}.pt"
             )
             # torch.save(text_embed, save_path)
