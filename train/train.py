@@ -14,9 +14,12 @@
 # See the License for the specific language governing permissions and
 
 import copy
+import gc
 import logging
 import math
 import os
+import psutil
+import tracemalloc
 from pathlib import Path
 
 import diffusers
@@ -25,6 +28,7 @@ import torch
 import torch.utils.checkpoint
 import transformers
 import yaml
+import numpy as np
 from accelerate import Accelerator
 from accelerate.utils import DeepSpeedPlugin, ProjectConfiguration, set_seed
 from diffusers.optimization import get_scheduler
@@ -32,6 +36,8 @@ from diffusers.utils import is_wandb_available
 from huggingface_hub import create_repo, upload_folder
 from tqdm.auto import tqdm
 from safetensors.torch import load_model
+from torch.profiler import profile, record_function, ProfilerActivity
+
 
 from models.ema_model import EMAModel
 from models.multimodal_encoder.siglip_encoder import SiglipVisionTower
@@ -78,6 +84,11 @@ def train(args, logger):
     # Read the config
     with open(args.config_path, "r") as fp:
         config = yaml.safe_load(fp)
+
+    pid = os.getpid()
+    # tracemalloc.start()
+    process = psutil.Process(pid)
+    memory_per_epoch = []
 
     if args.resume_from_checkpoint is not None and args.resume_from_checkpoint != "latest":
         dir_path = os.path.dirname(args.resume_from_checkpoint)
@@ -439,11 +450,12 @@ def train(args, logger):
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(global_step, args.max_train_steps), 
                         disable=not accelerator.is_local_main_process,
-                        ncols=150)
+                        ncols=100)
     progress_bar.set_description("Steps")
 
     best_mse_loss = 999999.9
     loss_for_log = {}
+
     for epoch in range(first_epoch, args.num_train_epochs):
 
         rdt.train()
@@ -451,6 +463,13 @@ def train(args, logger):
         # Set the progress_bar to correct position
         if args.resume_from_checkpoint and epoch == first_epoch:
             progress_bar.update(resume_step // args.gradient_accumulation_steps)
+        
+        # with profile(
+        #     activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+        #     record_shapes=True,
+        #     on_trace_ready=torch.profiler.tensorboard_trace_handler('./log'),
+        #     with_stack=True
+        # ) as prof:
         
         # Forward and backward...
         for batch in train_dataloader:
@@ -568,7 +587,34 @@ def train(args, logger):
 
             if global_step >= args.max_train_steps:
                 break
-                
+
+        memory_info = process.memory_info()
+        current = memory_info.rss
+        # current, peak = tracemalloc.get_traced_memory()
+        memory_per_epoch.append(current)
+        memory_diff = [m/1024**3 for m in np.diff(memory_per_epoch)]
+
+        # print(f"Memory usage: {memory_info.rss / 1024 ** 3:.2f} GB")
+        print(f"[Rank {os.environ.get('LOCAL_RANK',-1)}] Current memory usage: {current / 1024**3:.2f} GB")
+        # print(f"[Rank {os.environ.get('LOCAL_RANK',-1)}] Peak memory usage: {peak / 1024**3:.2f} GB")
+        print(f"[Rank {os.environ.get('LOCAL_RANK',-1)}] Memory change for last 10 epochs: {memory_diff[-10:]} GB (in total {sum(memory_diff)} GB)")
+        # Print summary statistics
+        # print("ob", gc.get_objects())
+        # print("cuda_memory_usage", prof.key_averages().table(sort_by="cuda_memory_usage", row_limit=10))
+        # print("cpu_memory_usage", prof.key_averages().table(sort_by="cpu_memory_usage", row_limit=20))
+        # with open("profiler.txt", "w") as f:
+        #     f.writelines(f" ================== EPOCH {epoch} ================== \n")
+        #     f.writelines(f"Memory usage: {current / 1024 ** 3:.2f} GB\n")
+        #     live_ob = gc.get_objects()
+        #     # f.writelines(f"Live objects: {len(live_ob)}\n")
+        #     # for ob in live_ob:
+        #     #     f.writelines(f"{ob}\n")
+        #     f.writelines(prof.key_averages().table(sort_by="cpu_memory_usage", row_limit=20))
+        #     # f.write(prof.key_averages().table(sort_by="cuda_memory_usage", row_limit=10))
+
+        torch.cuda.empty_cache()
+        # clean deepspeed's state_dict
+        gc.collect()
 
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()

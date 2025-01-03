@@ -1,5 +1,6 @@
 import argparse
 import os
+import tracemalloc
 from distutils.util import strtobool
 from train.train import train
 from train.eval import eval
@@ -378,6 +379,11 @@ if __name__ == "__main__":
     print("eef_obs", args.eef_obs, bool(args.eef_obs))
     print("eef_action", args.eef_action, bool(args.eef_action))
     print("qvel_obs", args.qvel_obs, bool(args.qvel_obs))
+
+    # tracemalloc.start()
+    # current, peak = tracemalloc.get_traced_memory()
+    # print(f"[Rank {os.environ.get('LOCAL_RANK',-1)}] Current memory usage: {current / 1024**3:.2f} GB")
+    # print(f"[Rank {os.environ.get('LOCAL_RANK',-1)}] Peak memory usage: {peak / 1024**3:.2f} GB")
         
     if args.eval:
         eval(args, logger)

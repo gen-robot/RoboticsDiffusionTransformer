@@ -72,7 +72,7 @@ if [ -z "$CUDA_VISIBLE_DEVICES" ]; then
 fi
 ngpus=$(echo $CUDA_VISIBLE_DEVICES | tr "," "\n" | wc -l)
 
-run_name="cobot-task_stat-${task}-${pretrained}-lora${lora_rank}-n${ngpus}bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}-eefi${eef_in}-eefo${eef_out}-qveli${qvel_in}-lr${lr}"
+run_name="${task}-${pretrained}-lora${lora_rank}-n${ngpus}bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}-eefi${eef_in}-eefo${eef_out}-qveli${qvel_in}-lr${lr}"
 ckpt_path="google/${pretrained}"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
@@ -108,7 +108,7 @@ fi
 
 # deepspeed --hostfile=hostfile.txt
 # --main_process_port 0
-accelerate launch --main_process_port 29500 main.py \
+accelerate launch --main_process_port 29800 main.py \
     --deepspeed="./configs/zero2.json" \
     --precomp_lang_embed \
     --robot_name="cobot" \
@@ -139,7 +139,8 @@ accelerate launch --main_process_port 29500 main.py \
     --dataset_type="finetune" \
     --state_noise_snr=40 \
     --load_from_hdf5 \
-    --report_to=wandb
+    --report_to=wandb 
+    # --resume_from_checkpoint /home/gaofeng/arm_ws/EmbodiedAgent/quick_jump/rdt/checkpoints/cobot-task_stat-new_open_drawer-rdt-1b-ft-lora64-n4bs8-max200-random-mask0.1-bf16-eefiFalse-eefoFalse-qveliFalse-lr1e-4/2024-12-31-19-19-35/checkpoint-57000
 
     # Use this to resume training from some previous checkpoint
     # --resume_from_checkpoint="checkpoint-36000" \
