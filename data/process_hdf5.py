@@ -8,20 +8,21 @@ import yaml
 import cv2
 import numpy as np
 
-from IPython import embed
+# from IPython import embed
 
 
 # data1 = h5py.File("/home/gaofeng/data/cobot_data/pick_can/episode_0.hdf5", "r")
 # data2 = h5py.File("/home/gaofeng/arm_ws/EmbodiedAgent/RDT/data/datasets/agilex/test/rdt_data/close_glasses_box/episode_0.hdf5", "r")
 
-src_dir = "/home/gaofeng/data/cobot_data/pick_can"
-tgt_dir = "/home/gaofeng/data/cobot_data_processed/pick_can"
+src_dir = "/home/gaofeng/arm_ws/EmbodiedAgent/embodied_agent/third_party/vla/rdt/data/datasets/agilex/cobot_data/new_open_drawer_gf"
+tgt_dir = "/home/gaofeng/arm_ws/EmbodiedAgent/embodied_agent/third_party/vla/rdt/data/datasets/agilex/cobot_data/new_open_drawer_processed"
 
 data_dict = {
     # 一个是奖励里面的qpos，qvel， effort ,一个是实际发的acition
     '/observations/qpos': [],
     '/observations/qvel': [],
     '/observations/effort': [],
+    '/observations/ee_pose': [],
     '/observations/images/cam_high': [],
     '/observations/images/cam_high': [],
     '/observations/images/cam_high': [],
@@ -38,7 +39,10 @@ for dir_root, _, files in os.walk(src_dir, followlinks=True):
         print(f"Processing {src_path} with {data_size} samples")
 
         tgt_path = src_path.replace(src_dir, tgt_dir)
-        root = h5py.File(tgt_path, 'w', rdcc_nbytes=1024**2*2)
+        tgt_base = os.path.basename(tgt_path)
+        if not os.path.exists(tgt_base):
+            os.makedirs(tgt_base, exist_ok=True)
+        root = h5py.File(tgt_path, 'w') #, rdcc_nbytes=1024**2*2)
     
         root.attrs['sim'] = False
         root.attrs['compress'] = True
@@ -47,34 +51,37 @@ for dir_root, _, files in os.walk(src_dir, followlinks=True):
         image = obs.create_group('images')
 
         for cam_name in f['observations/images'].keys():
-            dt = h5py.vlen_dtype(np.bytes_)
-            # import pdb; pdb.set_trace()
-            _ = image.create_dataset(cam_name, (data_size,), dtype=h5py.vlen_dtype(np.dtype('uint8')))
+            max_length = 0
             img_list = []
             for img in f['observations/images/' + cam_name]:
-                encoded_image = cv2.imencode('.jpeg', img)[1];
-                # image_buffer = io.BytesIO(encoded_image) # convert array to bytes
-                # image_bytes = image_buffer.getvalue() # retrieve bytes string
-                # image_np = np.asarray(image_bytes)
-                img_list.append(np.frombuffer(encoded_image.tobytes(), dtype='uint8'))
-                # img_list.append(encoded_image.tobytes(), dtype=np.bytes_))
-                recovered_image = cv2.imdecode(np.frombuffer(img_list[-1], np.uint8), cv2.IMREAD_COLOR)
-                # # save raw image, encoded image and recovered image
-                cv2.imwrite('raw.jpg', img)
-                # cv2.imwrite('encoded.jpg', encoded_image)
-                cv2.imwrite('recovered.jpg', recovered_image)
+                # encoded_image = cv2.imencode('.jpeg', img)[1]
+                encoded_image = cv2.imdecode(np.frombuffer(img, np.uint8), cv2.IMREAD_COLOR)
+                encoded_image = cv2.imencode('.jpeg', encoded_image)[1]
+                img_bytes = encoded_image.tobytes()
+                img_list.append(img_bytes)
+                max_length = max(max_length, len(img_bytes))
+
+            # img_list = np.array(img_list, dtype=np.uint8)
+            fixed_length_dtype = f'|S{max_length}'
+            _ = image.create_dataset(cam_name, shape=len(img_list), dtype=fixed_length_dtype, chunk=1)
+            # Write images into the dataset
+            for i, img_bytes in enumerate(img_list):
+                root['observations/images/' + cam_name][i] = img_bytes
+            # image.create_dataset(cam_name, shape=len(img_list), data=img_list, dtype=h5py.special_dtype(vlen=np.dtype('uint8')))
             # import pdb; pdb.set_trace()
-            root['observations/images/' + cam_name][...] = img_list
+            # root['observations/images/' + cam_name][...] = img_list
 
         _ = obs.create_dataset('qpos', (data_size, 14))
         _ = obs.create_dataset('qvel', (data_size, 14))
         _ = obs.create_dataset('effort', (data_size, 14))
+        _ = obs.create_dataset('ee_pose', (data_size, 14))
         _ = root.create_dataset('action', (data_size, 14))
         _ = root.create_dataset('base_action', (data_size, 2))
 
         root['observations/qpos'][...] = f['observations/qpos'][...]
         root['observations/qvel'][...] = f['observations/qvel'][...]
         root['observations/effort'][...] = f['observations/effort'][...]
+        root['observations/ee_pose'][...] = f['observations/ee_pose'][...]
         root['action'][...] = f['action'][...]
         root['base_action'][...] = f['base_action'][...]
 
@@ -82,3 +89,4 @@ for dir_root, _, files in os.walk(src_dir, followlinks=True):
         root.close()
 
         print(f"Processed {src_path} -> {tgt_path}")
+        # exit(0)

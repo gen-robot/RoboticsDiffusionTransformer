@@ -108,7 +108,7 @@ fi
 
 # deepspeed --hostfile=hostfile.txt
 # --main_process_port 0
-accelerate launch --main_process_port 29500 main.py \
+accelerate launch --main_process_port 29600 main.py \
     --deepspeed="./configs/zero2.json" \
     --precomp_lang_embed \
     --robot_name="cobot" \
