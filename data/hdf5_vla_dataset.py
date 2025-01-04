@@ -1,6 +1,7 @@
 import os
 import fnmatch
 import json
+import gc
 
 import h5py
 import yaml
@@ -183,7 +184,7 @@ class HDF5VLADataset:
                 } or None if the episode is invalid.
         """
         with h5py.File(file_path, 'r', swmr=True) as f:
-            qpos = f['observations']['qpos'][:]
+            qpos = f['observations']['qpos'][:].copy()
             num_steps = qpos.shape[0]
             # [Optional] We drop too-short episode
             if num_steps < 128:
@@ -254,7 +255,8 @@ class HDF5VLADataset:
                [[1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[0], 
                  1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[1]]] 
             )
-            target_qpos = f['action'][step_id:step_id+self.CHUNK_SIZE] / np.array(
+            _action = f['action'][:].copy()
+            target_qpos = _action[step_id:step_id+self.CHUNK_SIZE] / np.array(
                [[1, 1, 1, 1, 1, 1, self.gripper_action_scale[0], 
                  1, 1, 1, 1, 1, 1, self.gripper_action_scale[1]]] 
             )
@@ -278,7 +280,7 @@ class HDF5VLADataset:
                     enable_eef_obs = False
                     enable_eef_action = False
                 else:
-                    ee_pose = f['observations']['ee_pose'][:]
+                    ee_pose = f['observations']['ee_pose'][:].copy()
                     enable_eef_obs = self.enable_eef_obs
                     enable_eef_action = self.enable_eef_action
             else:
@@ -318,7 +320,7 @@ class HDF5VLADataset:
                 eef_actions = None
 
             if self.enable_qvel_obs:
-                qvel = f['observations']['qvel'][:]
+                qvel = f['observations']['qvel'][:].copy()
                 state_qvel = qvel[step_id:step_id+1]
                 state_qvel_std = np.std(qvel, axis=0)
                 state_qvel_mean = np.mean(qvel, axis=0)
@@ -384,13 +386,17 @@ class HDF5VLADataset:
             # Parse the images
             def parse_img(key):
                 imgs = []
+                # Preload all necessary data to avoid repeated HDF5 access
+                img_data = []
+                all_images = f['observations']['images'][key][:].copy()
                 for i in range(max(step_id-self.IMG_HISORY_SIZE+1, 0), step_id+1):
-                    img = f['observations']['images'][key][i]
+                    img = all_images[i]
                     if f.attrs.get('compress', True):
-                        imgs.append(cv2.imdecode(np.frombuffer(img, np.uint8), cv2.IMREAD_COLOR))
+                        img_data.append(cv2.imdecode(np.frombuffer(img, np.uint8), cv2.IMREAD_COLOR))
                     else:
-                        imgs.append(img)
-                imgs = np.stack(imgs)
+                        img_data.append(img)
+                imgs = np.stack(img_data)
+                # del img_data; gc.collect()
                 if imgs.shape[0] < self.IMG_HISORY_SIZE:
                     # Pad the images using the first image
                     imgs = np.concatenate([
@@ -448,7 +454,7 @@ class HDF5VLADataset:
                 } or None if the episode is invalid.
         """
         with h5py.File(file_path, 'r', swmr=True) as f:
-            qpos = f['observations']['qpos'][:]
+            qpos = f['observations']['qpos'][:].copy()
             num_steps = qpos.shape[0]
             # [Optional] We drop too-short episode
             if num_steps < 128:
@@ -469,7 +475,7 @@ class HDF5VLADataset:
                [[1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[0], 
                  1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[1]]] 
             )
-            target_qpos = f['action'][:] / np.array(
+            target_qpos = f['action'][:].copy() / np.array(
                [[1, 1, 1, 1, 1, 1, self.gripper_action_scale[0], 
                  1, 1, 1, 1, 1, 1, self.gripper_action_scale[1]]] 
             )
