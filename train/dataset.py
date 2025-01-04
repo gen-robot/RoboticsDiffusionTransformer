@@ -147,8 +147,7 @@ class VLAConsumerDataset(Dataset):
         self.hdf5_dataset = None
         if use_hdf5:
             if use_maniskill:
-                self.hdf5_dataset = HDF5ManiSkillDataset(type=maniskill_data_type,
-                                                         with_other_task=False)
+                self.hdf5_dataset = HDF5ManiSkillDataset(type=maniskill_data_type)
             else:
                 self.hdf5_dataset = HDF5VLADataset(
                     data_path=data_path, 

@@ -43,7 +43,7 @@ fi
 accelerate launch main.py \
     --deepspeed="./configs/zero2.json" \
     --robot_name="panda" \
-    --run_name="rdt-panda-${task_name}-lr${lr}-type${type}" \
+    --run_name="rdt-panda-${task_name}-lr${lr}-type${type}-multi_task" \
     --pretrained_model_name_or_path="google/rdt-maniskill/rdt/mp_rank_00_model_states.pt" \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
     --pretrained_vision_encoder_name_or_path=$VISION_ENCODER_NAME \

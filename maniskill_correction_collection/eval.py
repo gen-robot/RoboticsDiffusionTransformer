@@ -128,7 +128,7 @@ def main(args):
         text_embed_correction = policy.encode_instruction(task2lang["StackCube-v1-correction"])
         torch.save(text_embed_correction, text_embed_correction_name)
 
-    render_dir = f"./outs/render/correction-{env_id}-{args.type}/"
+    render_dir = f"./outs/render/multi-task/correction-{env_id}-{args.type}/"
     Path(render_dir).mkdir(parents=True, exist_ok=True)
 
     base_seed = 12345678
@@ -175,6 +175,7 @@ def main(args):
             if do_correction_period == 0:
                 actions = policy.step(proprio, images, text_embed).squeeze(0).cpu().numpy()
             else:
+                is_correction = True
                 actions = policy.step(proprio, images, text_embed_correction).squeeze(0).cpu().numpy()
 
             # Take 8 steps since RDT is trained to predict interpolated 64 steps(actual 16 steps)
@@ -211,7 +212,6 @@ def main(args):
                             condition_flag = 1
                             condition_check_steps = 2
                             do_correction_period = 4
-                            is_correction = True
         
         save_mp4(
             f"{render_dir}/{episode}.mp4",
@@ -228,17 +228,17 @@ def main(args):
         
         success_rate = success_count / (episode + 1) * 100
 
-        correction_rate = None
+        correction_rate = do_correction_count / (episode + 1) * 100
+        correction_success_rate = None
         if do_correction_count > 0:
             correction_success_rate = correction_success_count / do_correction_count * 100
-            correction_rate = do_correction_count / (episode + 1) * 100
 
         success_rate_file = f"{render_dir}/success_rate.txt"
         with open(success_rate_file, "w") as f:
             f.write(f"Success rate: {success_rate}%\n")
             f.write(f"Correction rate: {correction_rate}%\n")
-            if correction_rate is not None:
-                f.write(f"Correction success rate: {correction_rate}%\n")
+            if correction_success_rate is not None:
+                f.write(f"Correction success rate: {correction_success_rate}%\n")
             else:
                 f.write("Correction success rate: N/A\n")
 

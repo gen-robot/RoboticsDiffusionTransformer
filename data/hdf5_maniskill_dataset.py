@@ -315,7 +315,7 @@ class HDF5VLADataset:
 if __name__ == "__main__":
     from PIL import Image
     
-    ds = HDF5VLADataset(type="original")
+    ds = HDF5VLADataset(type="all")
 
     json_data = {
         'state_min': ds.state_min.tolist(),

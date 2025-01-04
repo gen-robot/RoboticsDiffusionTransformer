@@ -319,6 +319,25 @@ def main(args):
                     break
 
                 angle = torch.atan2(target_vec[0], target_vec[1])
+
+                way_vector = env.cubeA.pose.raw_pose[0, :3] - env.cubeB.pose.raw_pose[0, :3]
+                way_angle = torch.atan2(way_vector[0], way_vector[1])
+                while way_angle < -0.001:
+                    way_angle += np.pi
+                while way_angle > np.pi + 0.001:
+                    way_angle -= np.pi
+                
+                interval_min = np.pi / 4
+                interval_max = 3 * np.pi / 4
+
+                if way_angle > np.pi / 4 and way_angle < 3 * np.pi / 4:
+                    interval_min = 3 * np.pi / 4
+                    interval_max = 5 * np.pi / 4
+
+                while angle < interval_min - 0.01:
+                    angle += np.pi / 2
+                while angle > interval_max + 0.01:
+                    angle -= np.pi / 2
                 input_cube_pose[0, 3:] = torch.tensor([0, 
                                                        np.sin(angle / 2), 
                                                        np.cos(angle / 2), 
