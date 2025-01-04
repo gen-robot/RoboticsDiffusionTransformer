@@ -128,7 +128,7 @@ def main(args):
         text_embed_correction = policy.encode_instruction(task2lang["StackCube-v1-correction"])
         torch.save(text_embed_correction, text_embed_correction_name)
 
-    render_dir = f"./outs/render/multi-task/correction-{env_id}-{args.type}/"
+    render_dir = f"./outs/render/{args.sim_backend}/multi-task/correction-{env_id}-{args.type}/"
     Path(render_dir).mkdir(parents=True, exist_ok=True)
 
     base_seed = 12345678
