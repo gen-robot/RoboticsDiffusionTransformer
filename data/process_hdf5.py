@@ -14,8 +14,11 @@ import numpy as np
 # data1 = h5py.File("/home/gaofeng/data/cobot_data/pick_can/episode_0.hdf5", "r")
 # data2 = h5py.File("/home/gaofeng/arm_ws/EmbodiedAgent/RDT/data/datasets/agilex/test/rdt_data/close_glasses_box/episode_0.hdf5", "r")
 
-src_dir = "/home/gaofeng/arm_ws/EmbodiedAgent/embodied_agent/third_party/vla/rdt/data/datasets/agilex/cobot_data/new_open_drawer_gf"
-tgt_dir = "/home/gaofeng/arm_ws/EmbodiedAgent/embodied_agent/third_party/vla/rdt/data/datasets/agilex/cobot_data/new_open_drawer_processed"
+src_dir = "/home/gaofeng/arm_ws/EmbodiedAgent/embodied_agent/third_party/vla/rdt/data/datasets/agilex/cobot_data/new_open_drawer_wbw"
+tgt_dir = "/home/gaofeng/arm_ws/EmbodiedAgent/embodied_agent/third_party/vla/rdt/data/datasets/agilex/cobot_data/new_open_drawer_processed2"
+
+if not os.path.exists(tgt_dir):
+    os.makedirs(tgt_dir, exist_ok=True)
 
 data_dict = {
     # 一个是奖励里面的qpos，qvel， effort ,一个是实际发的acition
@@ -39,9 +42,7 @@ for dir_root, _, files in os.walk(src_dir, followlinks=True):
         print(f"Processing {src_path} with {data_size} samples")
 
         tgt_path = src_path.replace(src_dir, tgt_dir)
-        tgt_base = os.path.basename(tgt_path)
-        if not os.path.exists(tgt_base):
-            os.makedirs(tgt_base, exist_ok=True)
+        # tgt_base = os.path.basename(tgt_path)
         root = h5py.File(tgt_path, 'w') #, rdcc_nbytes=1024**2*2)
     
         root.attrs['sim'] = False
@@ -63,7 +64,7 @@ for dir_root, _, files in os.walk(src_dir, followlinks=True):
 
             # img_list = np.array(img_list, dtype=np.uint8)
             fixed_length_dtype = f'|S{max_length}'
-            _ = image.create_dataset(cam_name, shape=len(img_list), dtype=fixed_length_dtype, chunk=1)
+            _ = image.create_dataset(cam_name, shape=len(img_list), dtype=fixed_length_dtype)
             # Write images into the dataset
             for i, img_bytes in enumerate(img_list):
                 root['observations/images/' + cam_name][i] = img_bytes
