@@ -14,12 +14,9 @@
 # See the License for the specific language governing permissions and
 
 import copy
-import gc
 import logging
 import math
 import os
-import psutil
-import tracemalloc
 from pathlib import Path
 
 import diffusers
@@ -28,7 +25,6 @@ import torch
 import torch.utils.checkpoint
 import transformers
 import yaml
-import numpy as np
 from accelerate import Accelerator
 from accelerate.utils import DeepSpeedPlugin, ProjectConfiguration, set_seed
 from diffusers.optimization import get_scheduler
@@ -36,8 +32,6 @@ from diffusers.utils import is_wandb_available
 from huggingface_hub import create_repo, upload_folder
 from tqdm.auto import tqdm
 from safetensors.torch import load_model
-from torch.profiler import profile, record_function, ProfilerActivity
-
 
 from models.ema_model import EMAModel
 from models.multimodal_encoder.siglip_encoder import SiglipVisionTower
@@ -47,6 +41,7 @@ from models.rdt_runner import RDTRunner
 from train.dataset import DataCollatorForVLAConsumerDataset, VLAConsumerDataset
 from train.sample import log_sample_res
 
+from scripts.maniskill_model import create_model
 
 if is_wandb_available():
     import wandb
@@ -87,10 +82,6 @@ def train(args, logger):
     
     # Set action chunk size to config
     config["common"]["action_chunk_size"] = args.chunk_size
-
-    if args.resume_from_checkpoint is not None and args.resume_from_checkpoint != "latest":
-        dir_path = os.path.dirname(args.resume_from_checkpoint)
-        args.output_dir = dir_path
 
     logging_dir = Path(args.output_dir, args.logging_dir)
 
@@ -154,8 +145,8 @@ def train(args, logger):
         weight_dtype = torch.bfloat16
 
     if args.instruction_mode in ["normal", "simplified", "expanded", "nonsense"]:
-        # args.precomp_lang_embed = False
-        logger.warn("The instruction mode is set to {}.".format(args.instruction_mode))
+        args.precomp_lang_embed = False
+        logger.warn("The instruction mode is set to {} and args.use_precomp_lang_embed is set to False.".format(args.instruction_mode))
     else:
         logger.info("The instruction will be randomly sampled, and args.use_precomp_lang_embed is set to {}.".format(args.precomp_lang_embed))
     
@@ -178,66 +169,38 @@ def train(args, logger):
     # Load from a pretrained checkpoint
     if (
         args.pretrained_model_name_or_path is not None
-        and not os.path.isfile(args.pretrained_model_name_or_path)
+        and os.path.isfile(args.pretrained_model_name_or_path)
     ):
         logger.info("Constructing model from pretrained checkpoint {}".format(args.pretrained_model_name_or_path))
-        rdt = RDTRunner.from_pretrained(args.pretrained_model_name_or_path, dtype=weight_dtype)
+        
+        maniskill_model = create_model(
+            args=config, 
+            dtype=torch.bfloat16,
+            pretrained=args.pretrained_model_name_or_path,
+            pretrained_text_encoder_name_or_path=args.pretrained_text_encoder_name_or_path,
+            pretrained_vision_encoder_name_or_path=args.pretrained_vision_encoder_name_or_path
+        )
+        rdt = maniskill_model.policy
 
         if args.lora_rank > 0:
             logger.info("Applying LoRA fine-tuning with rank {}".format(args.lora_rank))
-            lora_config = peft.LoraConfig(
-                r=args.lora_rank,
-                lora_alpha=min(args.lora_rank, 16),
-                lora_dropout=0.1,
-                target_modules=[
-                    "ffn.fc1","ffn.fc2","qkv", "cross_attn.q","cross_attn.kv","proj",
-                    "lang_adaptor.","img_adaptor.","state_adaptor."
-                ],
-                init_lora_weights="gaussian",
-            )
-            rdt = peft.get_peft_model(rdt, lora_config)
-            rdt.print_trainable_parameters()
+            raise NotImplementedError("LoRA fine-tuning is not yet implemented.")
         else:
             logger.info("No LoRA fine-tuning applied.")
     else:
         logger.info("Constructing model from provided config.")
-        # Calculate the image condition length
-        img_cond_len = (config["common"]["img_history_size"] 
-                        * config["common"]["num_cameras"] 
-                        * vision_encoder.num_patches)
-        rdt = RDTRunner(
-            action_dim=config["common"]["state_dim"],
-            pred_horizon=config["common"]["action_chunk_size"],
-            config=config["model"],
-            lang_token_dim=config["model"]["lang_token_dim"],
-            img_token_dim=config["model"]["img_token_dim"],
-            state_token_dim=config["model"]["state_token_dim"],
-            max_lang_cond_len=config["dataset"]["tokenizer_max_length"],
-            img_cond_len=img_cond_len,
-            img_pos_embed_config=[
-                # No initial pos embed in the last grid size
-                # since we've already done in ViT
-                ("image", (config["common"]["img_history_size"], 
-                    config["common"]["num_cameras"], 
-                    -vision_encoder.num_patches)),  
-            ],
-            lang_pos_embed_config=[
-                # Similarly, no initial pos embed for language
-                ("lang", -config["dataset"]["tokenizer_max_length"]),
-            ],
-            dtype=weight_dtype,
-        )
+        raise NotImplementedError("Need to provide a pretrained model.")
         
                                                                        
-    # ema_rdt = copy.deepcopy(rdt)
-    # ema_model = EMAModel(
-    #     ema_rdt,
-    #     update_after_step=config["model"]["ema"]["update_after_step"],
-    #     inv_gamma=config["model"]["ema"]["inv_gamma"],
-    #     power=config["model"]["ema"]["power"],
-    #     min_value=config["model"]["ema"]["min_value"],
-    #     max_value=config["model"]["ema"]["max_value"]
-    # )
+    ema_rdt = copy.deepcopy(rdt)
+    ema_model = EMAModel(
+        ema_rdt,
+        update_after_step=config["model"]["ema"]["update_after_step"],
+        inv_gamma=config["model"]["ema"]["inv_gamma"],
+        power=config["model"]["ema"]["power"],
+        min_value=config["model"]["ema"]["min_value"],
+        max_value=config["model"]["ema"]["max_value"]
+    )
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     # which ensure saving model in huggingface format (config.json + pytorch_model.bin)
@@ -246,7 +209,6 @@ def train(args, logger):
             for model in models:
                 model_to_save = model.module if hasattr(model, "module") else model  # type: ignore
                 if isinstance(model_to_save, type(accelerator.unwrap_model(rdt))):
-                    print(f"Saving model to {output_dir} in huggingface format to ensure compatibility.")
                     model_to_save.save_pretrained(output_dir)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
@@ -320,6 +282,8 @@ def train(args, logger):
             enable_eef_obs=args.eef_obs,
             enable_eef_action=args.eef_action,
             enable_qvel_obs=args.qvel_obs,
+            use_maniskill=args.maniskill,
+            maniskill_data_type=args.maniskill_data_type,
         )
     train_dataset = make_dataset(args, config)
     sample_dataset = make_dataset(args, config, is_sample=True)
@@ -366,7 +330,7 @@ def train(args, logger):
         rdt, optimizer, train_dataloader, sample_dataloader, lr_scheduler                   
     )
 
-    # ema_rdt.to(accelerator.device, dtype=weight_dtype)
+    ema_rdt.to(accelerator.device, dtype=weight_dtype)
 
     if text_encoder is not None:
         text_encoder.to(accelerator.device, dtype=weight_dtype)
@@ -400,67 +364,16 @@ def train(args, logger):
     global_step = 0
     first_epoch = 0
     
-    # Load from a pretrained checkpoint
-    if (
-        args.resume_from_checkpoint is None 
-        and args.pretrained_model_name_or_path is not None
-        and os.path.isfile(args.pretrained_model_name_or_path)
-    ):
-        # Since EMA is deprecated, we do not load EMA from the pretrained checkpoint
-        logger.info("Loading from a pretrained checkpoint {}".format(args.pretrained_model_name_or_path))
-        checkpoint = torch.load(args.pretrained_model_name_or_path)
-        rdt.module.load_state_dict(checkpoint["module"])
-   
-    # Potentially load in the weights and states from a previous save
-    if args.resume_from_checkpoint:
-        if args.resume_from_checkpoint != "latest":
-            path = os.path.basename(args.resume_from_checkpoint)
-            # os.system(f"cp -r {args.resume_from_checkpoint} {args.output_dir}")
-        else:
-            # Get the most recent checkpoint
-            dirs = os.listdir(args.output_dir)
-            dirs = [d for d in dirs if d.startswith("checkpoint")]
-            dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-            path = dirs[-1] if len(dirs) > 0 else None
-
-        if path is None:
-            accelerator.print(
-                f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
-            )
-            args.resume_from_checkpoint = None
-        else:
-            accelerator.print(f"Resuming from checkpoint {path}")
-            try:
-                accelerator.load_state(os.path.join(args.output_dir, path)) # load_module_strict=False
-            except:
-                # load deepspeed's state_dict
-                logger.info("Resuming training state failed. Attempting to only load from model checkpoint.")
-                checkpoint = torch.load(os.path.join(args.output_dir, path, "pytorch_model", "mp_rank_00_model_states.pt"))
-                rdt.module.load_state_dict(checkpoint["module"])
-                
-            # load_model(ema_rdt, os.path.join(args.output_dir, path, "ema", "model.safetensors"))
-            global_step = int(path.split("-")[1])
-
-            resume_global_step = global_step * args.gradient_accumulation_steps
-            first_epoch = global_step // num_update_steps_per_epoch
-            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
-
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(global_step, args.max_train_steps), 
                         disable=not accelerator.is_local_main_process,
-                        ncols=120)
+                        ncols=100)
     progress_bar.set_description("Steps")
 
-    best_mse_loss = 999999.9
     loss_for_log = {}
-
     for epoch in range(first_epoch, args.num_train_epochs):
 
         rdt.train()
-        
-        # Set the progress_bar to correct position
-        if args.resume_from_checkpoint and epoch == first_epoch:
-            progress_bar.update(resume_step // args.gradient_accumulation_steps)
         
         # Forward and backward...
         for batch in train_dataloader:
@@ -504,8 +417,8 @@ def train(args, logger):
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=args.set_grads_to_none)
-
-            # ema_model.step(accelerator.unwrap_model(rdt))
+            
+            ema_model.step(accelerator.unwrap_model(rdt))
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -515,25 +428,15 @@ def train(args, logger):
                 if global_step % args.checkpointing_period == 0:
                     save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                     accelerator.save_state(save_path)
-                    # ema_save_path = os.path.join(save_path, f"ema")
-                    # accelerator.save_model(ema_rdt, ema_save_path)
+                    ema_save_path = os.path.join(save_path, f"ema")
+                    accelerator.save_model(ema_rdt, ema_save_path)
+
+                    torch.save({"module": rdt.state_dict()}, os.path.join(save_path, "maniskill_model.pt"))
+
                     logger.info(f"Saved state to {save_path}")
 
-                    if args.lora_rank > 0 and accelerator.is_main_process:
-                        adapter_tmp_dir = os.path.join(save_path, "adapter")
-                        logger.info("Saving the adapter model to {}".format(adapter_tmp_dir))
-                        accelerator.unwrap_model(rdt).save_pretrained(adapter_tmp_dir)
-                        base_rdt = RDTRunner.from_pretrained(
-                            args.pretrained_model_name_or_path, dtype=weight_dtype)
-                        merged_rdt = peft.PeftModel.from_pretrained(base_rdt, adapter_tmp_dir)
-                        merged_rdt = merged_rdt.merge_and_unload()
-                        merged_rdt.save_pretrained(os.path.join(save_path, "merged"))
-
-                        del base_rdt
-                        del merged_rdt
-
                     # Remove old checkpoints and keep the last checkpoints_total_limit
-                    all_checkpoints = [d for d in os.listdir(args.output_dir) if (d.startswith("checkpoint-") and not d.endswith("best"))]
+                    all_checkpoints = [d for d in os.listdir(args.output_dir) if d.startswith("checkpoint-")]
                     if len(all_checkpoints) > args.checkpoints_total_limit:
                         sorted_checkpoints = sorted(all_checkpoints, key=lambda x: int(x.split("-")[-1]))
                         for ckpt in sorted_checkpoints[:-args.checkpoints_total_limit]:
@@ -556,21 +459,7 @@ def train(args, logger):
                     logger.info(sample_loss_for_log)
                     accelerator.log(sample_loss_for_log, step=global_step)
 
-                    if sample_loss_for_log["overall_avg_sample_mse"] < best_mse_loss:
-                        best_mse_loss = sample_loss_for_log["overall_avg_sample_mse"]
-                        best_save_path = os.path.join(args.output_dir, f"checkpoint-best")
-                        accelerator.save_state(best_save_path)
-                        # write the corresponding global step to the checkpoint directory
-                        with open(os.path.join(best_save_path, "global_step.txt"), "w") as f:
-                            f.write(str(global_step))
-                        logger.info(f"Saved best state to {best_save_path}")
-
-            logs = {
-                "epoch": epoch,
-                "loss": loss.detach().item(), 
-                "lr": lr_scheduler.get_last_lr()[0],
-                "global_step": global_step,
-                "sample_step": global_step * total_batch_size,}
+            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             logs.update(loss_for_log)
             # logger.info(logs)
@@ -583,8 +472,8 @@ def train(args, logger):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         accelerator.unwrap_model(rdt).save_pretrained(args.output_dir)
-        # ema_save_path = os.path.join(args.output_dir, f"ema")
-        # accelerator.save_model(ema_rdt, ema_save_path)
+        ema_save_path = os.path.join(args.output_dir, f"ema")
+        accelerator.save_model(ema_rdt, ema_save_path)
         
         logger.info(f"Saved Model to {args.output_dir}")
 

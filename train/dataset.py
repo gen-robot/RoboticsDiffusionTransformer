@@ -18,12 +18,14 @@ try:
     from ..data.compute_dataset_stat_hdf5 import process_hdf5_dataset
     from ..data.filelock import FileLock
     from ..data.hdf5_vla_dataset import HDF5VLADataset
+    from ..data.hdf5_maniskill_dataset import HDF5VLADataset as HDF5ManiSkillDataset
     from .image_corrupt import image_corrupt
 except ImportError:
     from constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
     from data.compute_dataset_stat_hdf5 import process_hdf5_dataset
     from data.filelock import FileLock
     from data.hdf5_vla_dataset import HDF5VLADataset
+    from data.hdf5_maniskill_dataset import HDF5VLADataset as HDF5ManiSkillDataset
     from train.image_corrupt import image_corrupt
 
 
@@ -111,6 +113,8 @@ class VLAConsumerDataset(Dataset):
         enable_eef_obs=False,
         enable_eef_action=False,
         enable_qvel_obs=False,
+        use_maniskill=False,
+        maniskill_data_type="all",
     ):
         super(VLAConsumerDataset, self).__init__()
         
@@ -142,15 +146,18 @@ class VLAConsumerDataset(Dataset):
         self.use_hdf5 = use_hdf5
         self.hdf5_dataset = None
         if use_hdf5:
-            self.hdf5_dataset = HDF5VLADataset(
-                data_path=data_path, 
-                robot_name=robot_name, 
-                use_precomp_lang_embed=use_precomp_lang_embed, 
-                max_demo_per_task=max_demo_per_task,
-                instruction_mode=instruction_mode,
-                enable_eef_obs=enable_eef_obs,
-                enable_eef_action=enable_eef_action,
-                enable_qvel_obs=enable_qvel_obs,)
+            if use_maniskill:
+                self.hdf5_dataset = HDF5ManiSkillDataset(type=maniskill_data_type)
+            else:
+                self.hdf5_dataset = HDF5VLADataset(
+                    data_path=data_path, 
+                    robot_name=robot_name, 
+                    use_precomp_lang_embed=use_precomp_lang_embed, 
+                    max_demo_per_task=max_demo_per_task,
+                    instruction_mode=instruction_mode,
+                    enable_eef_obs=enable_eef_obs,
+                    enable_eef_action=enable_eef_action,
+                    enable_qvel_obs=enable_qvel_obs,)
         self.use_precomp_lang_embed = use_precomp_lang_embed
         if use_precomp_lang_embed:
             self.empty_lang_embed = torch.load(f"{RDT_ROOT_DIR}/data/empty_lang_embed.pt")

@@ -1,6 +1,10 @@
 from typing import Callable, List, Type
+import os
 import sys
-sys.path.append('/')
+
+project_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(project_path)
+
 import gymnasium as gym
 import numpy as np
 from mani_skill.envs.sapien_env import BaseEnv
@@ -12,6 +16,8 @@ import torch
 from collections import deque
 from PIL import Image
 import cv2
+from pathlib import Path
+import imageio.v2 as iio
 
 def parse_args(args=None):
     parser = argparse.ArgumentParser()
@@ -26,10 +32,30 @@ def parse_args(args=None):
     parser.add_argument("--num-procs", type=int, default=1, help="Number of processes to use to help parallelize the trajectory replay process. This uses CPU multiprocessing and only works with the CPU simulation backend at the moment.")
     parser.add_argument("--pretrained_path", type=str, default=None, help="Path to the pretrained model")
     parser.add_argument("--random_seed", type=int, default=0, help="Random seed for the environment.")
+    parser.add_argument("--lang_embeds_path", type=str, default="./lang_embeds/", help="Path to language embedings.")
     return parser.parse_args()
 
+def save_mp4(save_path: str, frames: list[np.ndarray], fps: int = 60):
+    videoWriter = iio.get_writer(
+        save_path,
+        format="ffmpeg",  # type: ignore
+        mode="I",
+        fps=fps,
+        codec="libx264",
+        pixelformat="yuv420p",
+    )
+
+    # fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    # out = cv2.VideoWriter(save_path, fourcc, fps, (width, height))
+
+    for frame in frames:
+        videoWriter.append_data(frame)
+        if cv2.waitKey(10) & 0xFF == ord("q"):
+            break
+
+    cv2.destroyAllWindows()
+
 import random
-import os
 
 # set cuda 
 args = parse_args()
@@ -78,15 +104,28 @@ policy = create_model(
     pretrained_vision_encoder_name_or_path=pretrained_vision_encoder_name_or_path
 )
 
-if os.path.exists(f'text_embed_{env_id}.pt'):
-    text_embed = torch.load(f'text_embed_{env_id}.pt')
+text_embed_name = os.path.join(args.lang_embeds_path, f'text_embed_{env_id}.pt')
+
+if os.path.exists(text_embed_name):
+    text_embed = torch.load(text_embed_name)
 else:
     text_embed = policy.encode_instruction(task2lang[env_id])
-    torch.save(text_embed, f'text_embed_{env_id}.pt')
+    torch.save(text_embed, text_embed_name)
 
-MAX_EPISODE_STEPS = 200 
+max_steps = {
+    "PegInsertionSide-v1": 200,
+    "PickCube-v1": 200,
+    "StackCube-v1":  200,
+    "PlugCharger-v1": 400,
+    "PushCube-v1": 200
+}
+
+MAX_EPISODE_STEPS = max_steps[env_id] 
 total_episodes = args.num_traj  
 success_count = 0  
+
+render_dir = f"./outs/render/{env_id}/"
+Path(render_dir).mkdir(parents=True, exist_ok=True)
 
 base_seed = 20241201
 import tqdm
@@ -119,6 +158,7 @@ for episode in tqdm.trange(total_episodes):
         actions = actions[::4, :]
         for idx in range(actions.shape[0]):
             action = actions[idx]
+            print("Check:", env.cubeA.pose.p, env.agent.tcp.pose.p, env.cubeA.pose.q, env.agent.tcp.pose.q)
             obs, reward, terminated, truncated, info = env.step(action)
             img = env.render().squeeze(0).detach().cpu().numpy()
             obs_window.append(img)
@@ -131,7 +171,13 @@ for episode in tqdm.trange(total_episodes):
                     success_count += 1
                     done = True
                     break 
+    save_mp4(
+        f"{render_dir}/{episode}.mp4",
+        video_frames,
+        fps=30,
+    )
     print(f"Trial {episode+1} finished, success: {info['success']}, steps: {global_steps}")
 
 success_rate = success_count / total_episodes * 100
 print(f"Success rate: {success_rate}%")
+env.close()

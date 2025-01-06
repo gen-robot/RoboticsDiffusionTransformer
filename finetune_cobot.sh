@@ -50,6 +50,9 @@ fi
 if [ -z "$lr" ]; then
     lr=1e-4
 fi
+if [ -z "$ck" ]; then
+    lr=64
+fi
 
 # print the arguments
 echo "%%%%%% Arguments %%%%%%"
@@ -128,10 +131,11 @@ accelerate launch --main_process_port 29800 main.py \
     --output_dir=$OUTPUT_DIR \
     --train_batch_size=${bs} \
     --sample_batch_size=${bs} \
+    --chunk_size=${ck} \
     --max_train_steps=200000 \
     --checkpointing_period=1000 \
     --sample_period=500 \
-    --checkpoints_total_limit=10 \
+    --checkpoints_total_limit=5 \
     --lr_scheduler="constant" \
     --dataloader_num_workers=8 \
     --image_aug \
