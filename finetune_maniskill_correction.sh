@@ -2,23 +2,23 @@
 export NCCL_IB_HCA=mlx5_0:1,mlx5_1:1,mlx5_2:1,mlx5_3:1,mlx5_4:1,mlx5_7:1,mlx5_8:1,mlx5_9:1
 export NCCL_IB_DISABLE=0
 # set NCCL_SOCKET_IFNAME to the interface you want to use for NCCL communication, get from ifconfig. otherwise will encounter error("NCCL WARN Bootstrap : no socket interface found")
-export NCCL_SOCKET_IFNAME=enp210s0f0 #bond0 
+# export NCCL_SOCKET_IFNAME=enp210s0f0 #bond0 
 export NCCL_DEBUG=INFO
 export NCCL_NVLS_ENABLE=0
 
 now="$(date +"%Y%m%d-%H%M%S")"
-lr=$1
-type=$2
+type="all"
+lr=2e-5
 
 run_name="rdt-maniskill-finetune-lr${lr}-type${type}"
 save_path="/nvme0n1/rdt"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
 export VISION_ENCODER_NAME="google/siglip-so400m-patch14-384"
-export OUTPUT_DIR="${save_path}/checkpoints/${run_name}-${now}"
+export OUTPUT_DIR="./checkpoints/${run_name}-${now}"
 export CFLAGS="-I/usr/include"
 export LDFLAGS="-L/usr/lib/x86_64-linux-gnu"
-export CUTLASS_PATH="/nvme0n1/rdt/install/flash-attention/csrc/cutlass/"
+# export CUTLASS_PATH="/nvme0n1/rdt/install/flash-attention/csrc/cutlass/"
 
 # assert CUTLASS_PATH is set
 if [ -z "$CUTLASS_PATH" ]; then
@@ -63,5 +63,5 @@ accelerate launch main.py \
     --state_noise_snr=40 \
     --load_from_hdf5 \
     --maniskill \
-    --maniskill_data_type=${type} \
-    --report_to=wandb
+    --maniskill_data_type=${type}
+    # --report_to=wandb

@@ -44,6 +44,7 @@ def parse_args(args=None):
     parser.add_argument("--pretrained_path", type=str, default=None, help="Path to the pretrained model")
     parser.add_argument("--random_seed", type=int, default=0, help="Random seed for the environment.")
     parser.add_argument("--lang_embeds_path", type=str, default="./lang_embeds/", help="Path to language embedings.")
+    parser.add_argument("--data_root", type=str, default=None, help="Path to a large disk for saving data")
     return parser.parse_args()
 
 def save_mp4(save_path: str, frames: list[np.ndarray], fps: int = 60):
@@ -201,6 +202,8 @@ def main(args):
     )
 
     text_embed_name = os.path.join(args.lang_embeds_path, f'text_embed_{env_id}.pt')
+    if not os.path.exists(args.lang_embeds_path):
+        os.makedirs(args.lang_embeds_path)
 
     if os.path.exists(text_embed_name):
         text_embed = torch.load(text_embed_name)
@@ -223,11 +226,12 @@ def main(args):
     ik_solver = IKSolver(env.agent.robot)
     to_base = env.agent.robot.pose.inv()
 
-    data_root = "/nvme0n1/rdt/datas/StackCube-v1-new/"
-    normal_success_demo_path = os.path.join(data_root, "normal_success_demo")
-    correction_success_demo_path = "/nvme0n1/rdt/maniskill_data/demo_new/StackCube-v2/"
-    correction_process_path = "/nvme0n1/rdt/maniskill_data/demo_new/StackCube-v1-correction/"
-    correction_success_render_path = os.path.join(data_root, "correction_success_render")
+    assert args.data_root is not None
+    # data_root = "/nvme0n1/rdt/datas/StackCube-v1-new/"
+    normal_success_demo_path = os.path.join(args.data_root, "maniskill_data", "normal_success_demo")
+    correction_success_render_path = os.path.join(args.data_root, "maniskill_data", "correction_success_render")
+    correction_success_demo_path = f"{args.data_root}/maniskill_data/demo_new/StackCube-v2/"
+    correction_process_path = f"{args.data_root}/maniskill_data/demo_new/StackCube-v1-correction/"
     if not os.path.exists(normal_success_demo_path):
         os.makedirs(normal_success_demo_path)
     if not os.path.exists(correction_success_demo_path):
