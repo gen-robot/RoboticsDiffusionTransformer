@@ -51,7 +51,7 @@ if [ -z "$lr" ]; then
     lr=1e-4
 fi
 if [ -z "$ck" ]; then
-    lr=64
+    ck=64
 fi
 
 # print the arguments

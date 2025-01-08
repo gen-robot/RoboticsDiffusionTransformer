@@ -21,7 +21,7 @@ for run_dir in dirlist:
     sub_dir = os.listdir(os.path.join(ROOT_DIR, run_dir))
     for dir in sub_dir:
         ckpt_dir = os.path.join(ROOT_DIR, run_dir, dir)
-        all_checkpoints = [d for d in os.listdir(ckpt_dir) if d.startswith("checkpoint-")]
+        all_checkpoints = [d for d in os.listdir(ckpt_dir) if d.startswith("checkpoint-") and not d.endswith("best")]
         if len(all_checkpoints) > 1:
             sorted_checkpoints = sorted(all_checkpoints, key=lambda x: int(x.split("-")[-1]))
             latest_ckpt = sorted_checkpoints[-1]
@@ -34,9 +34,21 @@ for run_dir in dirlist:
                 if file_name == 'pytorch_model.bin' and os.path.exists(os.path.join(deploy_dir, name, 'model.safetensors')):
                     continue
                 os.system(f"cp {os.path.join(ckpt_dir, latest_ckpt, file_name)} {os.path.join(deploy_dir, name)}")
-            
         else:
             print(f"Checkpoint not found in {ckpt_dir}")
+
+        if os.path.exists(os.path.join(ckpt_dir, 'checkpoint-best')):
+            best_ckpt = 'checkpoint-best'
+            name = run_dir + "-" + best_ckpt + "-" + dir
+            os.makedirs(os.path.join(deploy_dir, name))
+            for file_name in ['config.json', 'model.safetensors', 'adapter_config.json', 'adapter_model.safetensors', 'pytorch_model.bin']:
+                if not os.path.exists(os.path.join(ckpt_dir, best_ckpt, file_name)):
+                    print(f"File {file_name} not found in {os.path.join(ckpt_dir, best_ckpt)}")
+                    continue
+                if file_name == 'pytorch_model.bin' and os.path.exists(os.path.join(deploy_dir, name, 'model.safetensors')):
+                    continue
+                os.system(f"cp {os.path.join(ckpt_dir, best_ckpt, file_name)} {os.path.join(deploy_dir, name)}")
+        ...
 
 # print(f"Will tar the directory {deploy_dir}, containing {len(os.listdir(deploy_dir))} checkpoints")
 # os.system(f"tar -czvf {deploy_dir}.tar.gz {deploy_dir}")
