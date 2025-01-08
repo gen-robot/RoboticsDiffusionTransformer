@@ -223,10 +223,10 @@ def main(args):
     ik_solver = IKSolver(env.agent.robot)
     to_base = env.agent.robot.pose.inv()
 
-    data_root = "/nvme0n1/rdt/datas/StackCube-v1-new/"
+    data_root = "/nvme0n1/rdt/datas/StackCube-v1-new-gpu/"
     normal_success_demo_path = os.path.join(data_root, "normal_success_demo")
-    correction_success_demo_path = "/nvme0n1/rdt/maniskill_data/demo_new/StackCube-v2/"
-    correction_process_path = "/nvme0n1/rdt/maniskill_data/demo_new/StackCube-v1-correction/"
+    correction_success_demo_path = "/nvme0n1/rdt/maniskill_data/demo_new_gpu/StackCube-v2/"
+    correction_process_path = "/nvme0n1/rdt/maniskill_data/demo_new_gpu/StackCube-v1-correction/"
     correction_success_render_path = os.path.join(data_root, "correction_success_render")
     if not os.path.exists(normal_success_demo_path):
         os.makedirs(normal_success_demo_path)
@@ -261,6 +261,7 @@ def main(args):
         do_ik = False
         condition_flag = 1
         condition_check_steps = 6
+        last_correction_index = 0
 
         # For data saving
         obs_image_array = []
@@ -271,6 +272,7 @@ def main(args):
 
             if do_ik:
                 is_correction = 1
+                last_correction_index = len(action_array)
                 input_cube_pose = env.cubeA.pose.raw_pose
                 x_vec, y_vec, z_vec = get_direction_vector_from_quat(env.cubeA.pose.raw_pose[0, 3:])
                 
@@ -503,6 +505,9 @@ def main(args):
                 video_frames,
                 fps=30,
             )
+            obs_image_array = obs_image_array[last_correction_index:]
+            proprio_array = proprio_array[last_correction_index:]
+            action_array = action_array[last_correction_index:]
             save_data(correction_success_demo_path,
                       correction_success_demo_count,
                       obs_image_array,
