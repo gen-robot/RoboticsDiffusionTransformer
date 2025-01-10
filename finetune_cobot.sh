@@ -1,11 +1,15 @@
 export NCCL_IB_HCA=mlx5_0:1,mlx5_1:1,mlx5_2:1,mlx5_3:1,mlx5_4:1,mlx5_7:1,mlx5_8:1,mlx5_9:1
 export NCCL_IB_DISABLE=0
 # set NCCL_SOCKET_IFNAME to the interface you want to use for NCCL communication, get from ifconfig. otherwise will encounter error("NCCL WARN Bootstrap : no socket interface found")
-# export NCCL_SOCKET_IFNAME=enp210s0f0 #bond0 
+export NCCL_SOCKET_IFNAME=enp210s0f0 #bond0 
 export NCCL_DEBUG=INFO
 export NCCL_NVLS_ENABLE=0
 
-now="$(date +"%Y-%m-%d-%H-%M-%S")"
+now="$(date +"%Y%m%d-%H%M%S")"
+lora_rank=$1
+bs=$2
+ck=$3
+task=$4
 
 # check if arguments are exported, otherwise use default values
 if [ -z "$lora_rank" ]; then
@@ -77,12 +81,14 @@ ngpus=$(echo $CUDA_VISIBLE_DEVICES | tr "," "\n" | wc -l)
 
 run_name="${task}-${pretrained}-lora${lora_rank}-n${ngpus}bs${bs}-max${max_demo}-${instr}-mask${mask_prob}-${precision}-eefi${eef_in}-eefo${eef_out}-qveli${qvel_in}-lr${lr}"
 ckpt_path="google/${pretrained}"
+save_path="/nvme_data/liangzhi/rdt"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
 export VISION_ENCODER_NAME="google/siglip-so400m-patch14-384"
-export OUTPUT_DIR="./checkpoints/${run_name}/${now}"
+export OUTPUT_DIR="${save_path}/checkpoints/${run_name}-${now}"
 export CFLAGS="-I/usr/include"
 export LDFLAGS="-L/usr/lib/x86_64-linux-gnu"
+export CUTLASS_PATH="/nvme_data/liangzhi/installer/flash-attention/csrc/cutlass/"
 
 # assert CUTLASS_PATH is set
 if [ -z "$CUTLASS_PATH" ]; then
@@ -119,13 +125,9 @@ accelerate launch --main_process_port 29800 main.py \
     --qvel_obs=${qvel_in} \
     --lora_rank=${lora_rank} \
     --run_name=${run_name} \
+    --data_path="/nvme_data/embodied_agent/cobot_data/${task}" \
     --learning_rate=${lr} \
-    --data_path="data/datasets/agilex/cobot_data/${task}" \
     --pretrained_model_name_or_path=${ckpt_path} \
-    --max_demo_per_task=${max_demo} \
-    --instruction_mode=${instr} \
-    --cond_mask_prob=${mask_prob} \
-    --mixed_precision=${precision} \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
     --pretrained_vision_encoder_name_or_path=$VISION_ENCODER_NAME \
     --output_dir=$OUTPUT_DIR \
@@ -142,8 +144,8 @@ accelerate launch --main_process_port 29800 main.py \
     --dataset_type="finetune" \
     --state_noise_snr=40 \
     --load_from_hdf5 \
-    --report_to=wandb 
-    # --resume_from_checkpoint /home/gaofeng/arm_ws/EmbodiedAgent/quick_jump/rdt/checkpoints/cobot-task_stat-new_open_drawer-rdt-1b-ft-lora64-n4bs8-max200-random-mask0.1-bf16-eefiFalse-eefoFalse-qveliFalse-lr1e-4/2024-12-31-19-19-35/checkpoint-57000
+    --report_to=wandb \
+    --precomp_lang_embed
 
     # Use this to resume training from some previous checkpoint
     # --resume_from_checkpoint="checkpoint-36000" \

@@ -13,7 +13,7 @@ from models.multimodal_encoder.t5_encoder import T5Embedder
 GPU = 0
 MODEL_PATH = "google/t5-v1_1-xxl"
 CONFIG_PATH = "configs/base.yaml"
-SAVE_DIR = "outs/"
+SAVE_DIR = "/nvme_data/liangzhi/rdt/lang_emb/"
 
 # Modify this to your task name and instruction
 # TASK_NAME = "handover_pan"

@@ -265,6 +265,7 @@ def main(args):
         do_ik = False
         condition_flag = 1
         condition_check_steps = 6
+        last_correction_index = 0
 
         # For data saving
         obs_image_array = []
@@ -275,6 +276,7 @@ def main(args):
 
             if do_ik:
                 is_correction = 1
+                last_correction_index = len(action_array)
                 input_cube_pose = env.cubeA.pose.raw_pose
                 x_vec, y_vec, z_vec = get_direction_vector_from_quat(env.cubeA.pose.raw_pose[0, 3:])
                 
