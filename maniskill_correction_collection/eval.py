@@ -132,7 +132,7 @@ def main(args):
     Path(render_dir).mkdir(parents=True, exist_ok=True)
 
     base_seed = 12345678
-    total_episodes = 100 # Number of correction we collect
+    total_episodes = 1000 # Number of correction we collect
     MAX_EPISODE_STEPS = 700
     success_count = 0  
     do_correction_count = 0
@@ -213,11 +213,12 @@ def main(args):
                             condition_check_steps = 2
                             do_correction_period = 4
         
-        save_mp4(
-            f"{render_dir}/{episode}.mp4",
-            video_frames,
-            fps=30,
-        )
+        if episode % 10 == 0:
+            save_mp4(
+                f"{render_dir}/{episode}.mp4",
+                video_frames,
+                fps=30,
+            )
         print(f"Trial {episode+1} finished, success: {info['success']}, steps: {global_steps}")
 
         if is_correction:

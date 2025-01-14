@@ -1,39 +1,9 @@
-judge_system_prompt = """You are an expert in analyzing robotic tasks and assessing progress towards key milestones. Your task is to evaluate whether a robotic system has achieved specific key points in a given task. Focus on understanding the task description, analyzing the provided image of the robotic system’s current state, and providing a clear, concise judgment for each key point.
+import os
+import sys
 
-Given Input
-	1.	Task Description: A description of the task the robot is expected to complete.
-        Example: “Guide a Franka Panda robot to grasp the red cube and stack it on the green cube.”
-	2.	Key Points: The critical milestones in completing the task.
-        Example:
-        	•	The red cube is being grasped.
-        	•	The red cube is stacking on the green cube.
-	3.	Image: An image representing the robot's current state.
-
-Task
-	1.	Carefully analyze and understand the provided image. Briefly interpret the visual content (for your understanding only, do not output this step).
-	2.	Evaluate whether each provided key point has been achieved based on the image and the task description.
-	3.	Provide a clear success/failure judgment for each key point and a concise explanation of the reason for your judgment.
-	•	KeyPointID: number, follow the id in input
-	•	Success: True/False
-	•	Reason: Provide a maximum of three sentences to explain your evaluation.
-
-Output Format
-
-For each key point, format your response as:
-
-Key point: 
-    KeyPointID: number
-    Success: True/False
-    Reason: [A concise explanation (maximum 3 sentences) of why you made the judge]
-
-Remember
-	•	Your analysis must focus exclusively on the provided task description, key points, and image. Avoid making assumptions about conditions not visible in the image.
-	•	Be concise but clear in your reasoning, and ensure the explanation directly connects to the task and key point.
-	•	Do not provide any additional commentary or output unrelated to the specified format.
-	•	If the image is ambiguous, state this in your reasoning and provide the best-possible judgment based on visible evidence.
-	•	Pay attention to subtle details in the image that may indicate success or failure for each key point.
-
-"""
+if __name__=="__main__":
+    project_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    sys.path.append(project_path)
 
 import base64
 import io
@@ -41,11 +11,15 @@ from textwrap import dedent
 import json
 from openai import OpenAI
 from pydantic import BaseModel
-import os
 from PIL import Image
 from io import BytesIO
 import numpy as np
 import cv2
+
+from maniskill_correction_collection.system_prompt import (
+    judge_system_prompt,
+    stack_cube_system_prompt_improve
+)
 
 class Judgement(BaseModel):
     KeyPointID: int
@@ -84,6 +58,7 @@ def get_reply(client, system_prompt, user_prompt, image_base64, output_format):
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": dedent(system_prompt)},
+                # {"role": "system", "content": dedent(stack_cube_system_prompt_improve)},
                 {
                     "role": "user",
                     "content": [
@@ -142,13 +117,14 @@ key_points = {
 }
 
 class GPTAgent(object):
-    def __init__(self, task_name):
+    def __init__(self, task_name, save_judgement=True):
         self.task_name = task_name
         self.task_description = task_descriptions[task_name]
         self.key_point = key_points[task_name]
         self.save_id = 0
 
         self.gpt = OpenAI()
+        self.save_judgement = save_judgement
     
     def save_detection(self, image, result):
         save_dir = "./outs/gpt_result/"
@@ -197,6 +173,49 @@ class GPTAgent(object):
             print("Raw Result: ", result)
             print("#############################################################")
 
-            self.save_detection(image, result)
-
+            if self.save_judgement:
+                self.save_detection(image, result)
+    
         return ret_dict
+
+    def request_by_path(self, image_path):
+        item = {}
+        item['task_description'] = self.task_description
+        item['key_points'] = self.key_point
+        item['image_path'] = image_path
+
+        max_query_times = 5
+
+        for i in range(max_query_times):
+            result = process_item(self.gpt, item)
+            if result is not None:
+                break
+
+        # IF GPT failed, the result should be not correct
+        ret_dict = {
+            "is_grasped": True,
+            "is_stacked": True
+        }
+
+        if result is not None:
+            for sub_result in result:
+                if sub_result['KeyPointID'] == 0:
+                    ret_dict['is_grasped'] = sub_result['Success']
+                elif sub_result['KeyPointID'] == 1:
+                    ret_dict['is_stacked'] = sub_result['Success']
+            
+            print("####################### GPT Detection #######################")
+            print("Grasped: ", ret_dict['is_grasped'])
+            print("Stacked: ", ret_dict['is_stacked'])
+            print("Raw Result: ", result)
+            print("#############################################################")
+
+            if self.save_judgement:
+                self.save_detection(image, result)
+    
+        return ret_dict
+
+
+if __name__=="__main__":
+    gpt = GPTAgent("StackCube-v1", save_judgement=False)
+    gpt.request_by_path("./outs/gpt_result/33.png")
