@@ -8,12 +8,14 @@ if __name__=="__main__":
 import h5py
 import yaml
 import numpy as np
-# Assuming STATE_VEC_IDX_MAPPING is a dictionary mapping state variable names to indices
-from configs.state_vec import STATE_VEC_IDX_MAPPING
 import glob
 from scipy.interpolate import interp1d
 from PIL import Image
-
+try:
+    # Assuming STATE_VEC_IDX_MAPPING is a dictionary mapping state variable names to indices
+    from ..configs.state_vec import STATE_VEC_IDX_MAPPING
+except ImportError as e:
+    from configs.state_vec import STATE_VEC_IDX_MAPPING
 
 def interpolate_action_sequence(action_sequence, target_size):
     """

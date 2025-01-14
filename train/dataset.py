@@ -20,7 +20,8 @@ try:
     from ..data.hdf5_vla_dataset import HDF5VLADataset
     from ..data.hdf5_maniskill_dataset import HDF5VLADataset as HDF5ManiSkillDataset
     from .image_corrupt import image_corrupt
-except ImportError:
+except ImportError as e:
+    print(e)
     from constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
     from data.compute_dataset_stat_hdf5 import process_hdf5_dataset
     from data.filelock import FileLock
