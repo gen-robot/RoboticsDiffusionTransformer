@@ -497,8 +497,11 @@ class DataCollatorForVLAConsumerDataset(object):
             "images"
         ]
         for key in keys_to_stack:
-            batch[key] = torch.stack(batch[key], dim=0)
-        
+            try:
+                batch[key] = torch.stack(batch[key], dim=0)
+            except BaseException as e:
+                print(f"Error catched when stacking {key}:", e)
+                import pdb; pdb.set_trace()
         batch["ctrl_freqs"] = torch.tensor(batch["ctrl_freqs"])
     
         if len(input_ids) > 0:

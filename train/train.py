@@ -384,7 +384,8 @@ def train(args, logger):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("roboticDiffusionTransformer", config=vars(args), init_kwargs=tracker_init_kwargs)
+        project_name = os.getenv("WANDB_PROJECT", "roboticDiffusionTransformer")
+        accelerator.init_trackers(project_name, config=vars(args), init_kwargs=tracker_init_kwargs)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps

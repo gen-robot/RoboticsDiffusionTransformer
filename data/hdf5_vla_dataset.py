@@ -50,6 +50,7 @@ class HDF5VLADataset:
         self.enable_eef_obs = enable_eef_obs
         self.enable_eef_action = enable_eef_action
         self.enable_qvel_obs = enable_qvel_obs
+        self.robot_name = robot_name
 
         with open(f'{RDT_CONFIG_DIR}/gripper_scale.json', 'r') as gs_file:
             self.gs_dict = json.load(gs_file)
@@ -202,7 +203,7 @@ class HDF5VLADataset:
 
             # We randomly sample a timestep if step_id is not provided
             if step_id is None:
-                step_id = np.random.randint(first_idx-1, num_steps)
+                step_id = np.random.randint(first_idx-1, num_steps-1)
             
             # Load the instruction
             dir_path = os.path.dirname(file_path)
@@ -255,7 +256,11 @@ class HDF5VLADataset:
                [[1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[0], 
                  1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[1]]] 
             )
-            _action = f['action'][:].copy()
+            if self.robot_name == "cobot":
+                # FIXME: note that this is a hack, the action is the qpos of the next step due to the improper way the data is collected
+                _action = f['observations']['qpos'][1:].copy()
+            else:
+                _action = f['action'][:].copy()
             target_qpos = _action[step_id:step_id+self.CHUNK_SIZE] / np.array(
                [[1, 1, 1, 1, 1, 1, self.gripper_action_scale[0], 
                  1, 1, 1, 1, 1, 1, self.gripper_action_scale[1]]] 
@@ -511,7 +516,11 @@ class HDF5VLADataset:
 
 
 if __name__ == "__main__":
-    ds = HDF5VLADataset()
+    data_path = "/home/gaofeng/arm_ws/EmbodiedAgent/quick_jump/rdt/data/datasets/agilex/cobot_data/new_pick_coke"
+    robot_name = "cobot"
+    ds = HDF5VLADataset(data_path=data_path, robot_name=robot_name)
     for i in range(len(ds)):
         print(f"Processing episode {i}/{len(ds)}...")
-        ds.get_item(i)
+        for j in range(5):
+            print(f"  Sample {j+1}/5")
+            ds.get_item(i)
