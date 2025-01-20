@@ -283,7 +283,7 @@ def train(args, logger):
             enable_eef_action=args.eef_action,
             enable_qvel_obs=args.qvel_obs,
             use_maniskill=args.maniskill,
-            maniskill_data_type=args.maniskill_data_type,
+            data_type=args.data_type,
         )
     train_dataset = make_dataset(args, config)
     sample_dataset = make_dataset(args, config, is_sample=True)

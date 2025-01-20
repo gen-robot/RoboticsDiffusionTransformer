@@ -192,3 +192,6 @@ lang_embeds/
 
 # nohup
 nohup.out
+
+# robotwin env
+aloha_maniskill_sim/

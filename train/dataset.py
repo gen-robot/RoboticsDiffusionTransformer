@@ -19,6 +19,7 @@ try:
     from ..data.filelock import FileLock
     from ..data.hdf5_vla_dataset import HDF5VLADataset
     from ..data.hdf5_maniskill_dataset import HDF5VLADataset as HDF5ManiSkillDataset
+    from ..data.hdf5_robotwin_val_dataset import RoboTwinVLADataset
     from .image_corrupt import image_corrupt
 except ImportError:
     from constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
@@ -26,6 +27,7 @@ except ImportError:
     from data.filelock import FileLock
     from data.hdf5_vla_dataset import HDF5VLADataset
     from data.hdf5_maniskill_dataset import HDF5VLADataset as HDF5ManiSkillDataset
+    from data.hdf5_robotwin_val_dataset import RoboTwinVLADataset
     from train.image_corrupt import image_corrupt
 
 
@@ -114,7 +116,8 @@ class VLAConsumerDataset(Dataset):
         enable_eef_action=False,
         enable_qvel_obs=False,
         use_maniskill=False,
-        maniskill_data_type="all",
+        use_robotwin=False,
+        data_type="all",
     ):
         super(VLAConsumerDataset, self).__init__()
         
@@ -147,7 +150,9 @@ class VLAConsumerDataset(Dataset):
         self.hdf5_dataset = None
         if use_hdf5:
             if use_maniskill:
-                self.hdf5_dataset = HDF5ManiSkillDataset(type=maniskill_data_type)
+                self.hdf5_dataset = HDF5ManiSkillDataset(type=data_type)
+            elif use_robotwin:
+                self.hdf5_dataset = RoboTwinVLADataset(type=data_type)
             else:
                 self.hdf5_dataset = HDF5VLADataset(
                     data_path=data_path, 

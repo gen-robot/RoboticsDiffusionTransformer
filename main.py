@@ -4,6 +4,7 @@ from distutils.util import strtobool
 from train.train import train
 from train.eval import eval
 from train.train_maniskill import train as train_maniskill
+from train.train_robotwin import train as train_robotwin
 
 from accelerate.logging import get_logger
 from setproctitle import setproctitle
@@ -356,7 +357,8 @@ def parse_args(input_args=None):
     )
 
     parser.add_argument("--maniskill", action="store_true", help="Whether to run the maniskill model.")
-    parser.add_argument("--maniskill_data_type", type=str, default="all", help="The type of data to use for maniskill model.")
+    parser.add_argument("--robotwin", action="store_true", help="Whether to run the robotwin model.")
+    parser.add_argument("--data_type", type=str, default="all", help="The type of data to use for maniskill model.")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -391,7 +393,11 @@ if __name__ == "__main__":
         
     if args.eval:
         eval(args, logger)
-    elif not args.maniskill:
+    elif not args.maniskill and not args.robotwin:
         train(args, logger)
-    else:
+    elif args.maniskill:
         train_maniskill(args, logger)
+    elif args.robotwin:
+        train_robotwin(args, logger)
+    else:
+        raise ValueError("Invalid model type.")
