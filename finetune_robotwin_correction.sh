@@ -47,8 +47,8 @@ accelerate launch main.py \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
     --pretrained_vision_encoder_name_or_path=$VISION_ENCODER_NAME \
     --output_dir=$OUTPUT_DIR \
-    --train_batch_size=6 \
-    --sample_batch_size=8 \
+    --train_batch_size=12 \
+    --sample_batch_size=16 \
     --max_train_steps=200000 \
     --checkpointing_period=5000 \
     --sample_period=500 \
@@ -63,4 +63,5 @@ accelerate launch main.py \
     --load_from_hdf5 \
     --robotwin \
     --data_type=${type} \
+    --precomp_lang_embed \
     --report_to=wandb

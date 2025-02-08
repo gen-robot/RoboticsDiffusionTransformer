@@ -54,20 +54,20 @@ class RoboTwinVLADataset:
         if self.type == 'all' or self.type == 'mix':
             self.task_detail_dict['blocks_stack_easy_full'] = ['general']
             self.task_sample_num_dict['blocks_stack_easy_full'] = 500
-            self.task_detail_dict['empty_cup_place_full'] = ['general']
-            self.task_sample_num_dict['empty_cup_place_full'] = 500
+            # self.task_detail_dict['empty_cup_place_full'] = ['general']
+            # self.task_sample_num_dict['empty_cup_place_full'] = 500
         if self.type == 'all_no_head' or self.type == 'mix_no_head':
             self.task_detail_dict['blocks_stack_easy_end'] = ['general']
             self.task_sample_num_dict['blocks_stack_easy_end'] = 500
-            self.task_detail_dict['empty_cup_place_end'] = ['general']
-            self.task_sample_num_dict['empty_cup_place_end'] = 500
+            # self.task_detail_dict['empty_cup_place_end'] = ['general']
+            # self.task_sample_num_dict['empty_cup_place_end'] = 500
         if self.type == 'all' or self.type == 'all_no_head' or self.type == 'only_correction':
             self.task_detail_dict['blocks_stack_easy_part_repick_black'] = ['general']
-            self.task_sample_num_dict['blocks_stack_easy_part_repick_black'] = 615
+            self.task_sample_num_dict['blocks_stack_easy_part_repick_black'] = 1000
             self.task_detail_dict['blocks_stack_easy_part_repick_red'] = ['general']
-            self.task_sample_num_dict['blocks_stack_easy_part_repick_red'] = 385
-            self.task_detail_dict['empty_cup_place_part_repick'] = ['general']
-            self.task_sample_num_dict['empty_cup_place_part_repick'] = 1000
+            self.task_sample_num_dict['blocks_stack_easy_part_repick_red'] = 750
+            # self.task_detail_dict['empty_cup_place_part_repick'] = ['general']
+            # self.task_sample_num_dict['empty_cup_place_part_repick'] = 1000
 
         self.indices = self._make_idxes()
         
@@ -157,7 +157,6 @@ class RoboTwinVLADataset:
                     STATE_VEC_IDX_MAPPING["right_gripper_open"]
                 ]
                 uni_vec = np.zeros(values.shape[:-1] + (self.STATE_DIM,))
-                print("???????:", UNI_STATE_INDICES)
                 uni_vec[..., UNI_STATE_INDICES] = values
                 return uni_vec
 
@@ -286,26 +285,26 @@ class RoboTwinVLADataset:
             }
         
 if __name__ == "__main__":
-    ds = RoboTwinVLADataset(type="original")
+    ds = RoboTwinVLADataset(type="only_correction")
     print('##################################')
     print(len(ds))
-    eval_dir = "./outs/dataset_check/"
-    check_id = [i * (len(ds) // 50) for i in range(50)]
+    # eval_dir = "./outs/dataset_check/"
+    # check_id = [i * (len(ds) // 50) for i in range(50)]
 
-    check_data_dict = {}
+    # check_data_dict = {}
 
-    for id in check_id:
-        data = ds.get_item(id, check_data=True)
-        check_data_dict[id] = data
-        image_save_dir = os.path.join(eval_dir, f"{id}")
-        os.makedirs(image_save_dir, exist_ok=True)
-        for key, value in data[0].items():
-            if key in ['cam_high', 'cam_left_wrist', 'cam_right_wrist']:
-                for i in range(value.shape[0]):
-                    cv2.imwrite(os.path.join(image_save_dir, f"{key}_{i}.png"), value[i])
+    # for id in check_id:
+    #     data = ds.get_item(id, check_data=True)
+    #     check_data_dict[id] = data
+    #     image_save_dir = os.path.join(eval_dir, f"{id}")
+    #     os.makedirs(image_save_dir, exist_ok=True)
+    #     for key, value in data[0].items():
+    #         if key in ['cam_high', 'cam_left_wrist', 'cam_right_wrist']:
+    #             for i in range(value.shape[0]):
+    #                 cv2.imwrite(os.path.join(image_save_dir, f"{key}_{i}.png"), value[i])
 
-    with open(os.path.join(eval_dir, 'check_data_dict.pkl'), 'wb') as f:
-        pickle.dump(check_data_dict, f)
+    # with open(os.path.join(eval_dir, 'check_data_dict.pkl'), 'wb') as f:
+    #     pickle.dump(check_data_dict, f)
 
     # for i in range(len(ds)):
     #     print(f"Processing episode {i}/{len(ds)}...")
@@ -319,3 +318,4 @@ if __name__ == "__main__":
         
     #     if sample['cam_right_wrist'].shape[1] != 480:
     #         collect_list.append((episode_file_path, begin_idx, 'cam_right'))
+    

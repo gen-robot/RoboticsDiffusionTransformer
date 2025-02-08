@@ -128,7 +128,7 @@ def main(args):
         text_embed_correction = policy.encode_instruction(task2lang["StackCube-v1-correction"])
         torch.save(text_embed_correction, text_embed_correction_name)
 
-    render_dir = f"./outs/render/{args.sim_backend}/multi-task/correction-{env_id}-{args.type}/"
+    render_dir = f"./outs/render/{args.sim_backend}/multi-task/{env_id}-{args.type}/"
     Path(render_dir).mkdir(parents=True, exist_ok=True)
 
     base_seed = 12345678
@@ -137,6 +137,9 @@ def main(args):
     success_count = 0  
     do_correction_count = 0
     correction_success_count = 0
+
+    total_infer_time = 0
+    infer_num = 0
 
     import tqdm
     for episode in tqdm.trange(total_episodes):
@@ -172,11 +175,17 @@ def main(args):
             images = [Image.fromarray(arr) if arr is not None else None
                     for arr in image_arrs]
             
+            start_time = time.time()
+
             if do_correction_period == 0:
                 actions = policy.step(proprio, images, text_embed).squeeze(0).cpu().numpy()
             else:
                 is_correction = True
                 actions = policy.step(proprio, images, text_embed_correction).squeeze(0).cpu().numpy()
+
+            infer_time = time.time() - start_time
+            total_infer_time += infer_time
+            infer_num += 1
 
             # Take 8 steps since RDT is trained to predict interpolated 64 steps(actual 16 steps)
             actions = actions[::4, :]
@@ -242,6 +251,9 @@ def main(args):
                 f.write(f"Correction success rate: {correction_success_rate}%\n")
             else:
                 f.write("Correction success rate: N/A\n")
+            
+            f.write(f"\nAverage inference time: {total_infer_time / infer_num} seconds\n")
+            f.write(f"Total inference time: {total_infer_time} seconds\n")
 
     print(f"Success rate: {success_rate}%")
     print(f"Correction rate: {correction_rate}%")

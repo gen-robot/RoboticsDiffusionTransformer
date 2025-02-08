@@ -56,7 +56,7 @@ class HDF5VLADataset:
         # The name of your dataset
         self.DATASET_NAME = "agilex"
 
-        self.data_dir = "/nvme0n1/rdt/maniskill_data/demo_1k"
+        self.data_dir = "/nvme_data/liangzhi/rdt-maniskill/demo_1k"
         self.tasks = os.listdir(self.data_dir)
 
         # Multiple tasks
