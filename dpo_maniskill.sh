@@ -10,14 +10,14 @@ lr=$1
 beta_dpo=$2
 
 run_name="rdt-maniskill-dpo-lr${lr}-beta_dpo${beta_dpo}"
-save_path="/nvme_data/liangzhi/checkpoints"
+save_path="/nvme0n1/rdt-dpo"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
 export VISION_ENCODER_NAME="google/siglip-so400m-patch14-384"
 export OUTPUT_DIR="${save_path}/checkpoints/${run_name}-${now}"
 export CFLAGS="-I/usr/include"
 export LDFLAGS="-L/usr/lib/x86_64-linux-gnu"
-export CUTLASS_PATH="/nvme_data/liangzhi/installer/flash-attention/csrc/cutlass/"
+export CUTLASS_PATH="/nvme1n1/liangzhi/installer/flash-attention/csrc/cutlass/"
 
 # assert CUTLASS_PATH is set
 if [ -z "$CUTLASS_PATH" ]; then
@@ -47,8 +47,8 @@ accelerate launch main.py \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
     --pretrained_vision_encoder_name_or_path=$VISION_ENCODER_NAME \
     --output_dir=$OUTPUT_DIR \
-    --train_batch_size=2 \
-    --sample_batch_size=2 \
+    --train_batch_size=16 \
+    --sample_batch_size=16 \
     --max_train_steps=200000 \
     --checkpointing_period=1000 \
     --sample_period=500 \
@@ -64,4 +64,4 @@ accelerate launch main.py \
     --maniskill \
     --dpo \
     --beta_dpo ${beta_dpo} \
-    --report_to=tensorboard
+    --report_to=wandb

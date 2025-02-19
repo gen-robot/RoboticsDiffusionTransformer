@@ -273,12 +273,12 @@ class RDTRunner(
         pred_l = self.model(state_action_traj_l, ctrl_freqs, 
                             timesteps, lang_cond_l, img_cond_l, 
                             lang_mask=lang_attn_mask)
-        
+
         pred_w = self.convert_sample_to_epsilon(noisy_action_w, pred_w, timesteps)
         pred_l = self.convert_sample_to_epsilon(noisy_action_l, pred_l, timesteps)
 
-        model_loss_w = (pred_w - noise_w).pow(2).mean(dim=1)
-        model_loss_l = (pred_l - noise_l).pow(2).mean(dim=1)
+        model_loss_w = (pred_w - noise_w).pow(2).mean(dim=[1, 2])
+        model_loss_l = (pred_l - noise_l).pow(2).mean(dim=[1, 2])
         model_diff = model_loss_w - model_loss_l
 
         with torch.no_grad():
@@ -292,8 +292,8 @@ class RDTRunner(
             ref_pred_w = self.convert_sample_to_epsilon(noisy_action_w, ref_pred_w, timesteps)
             ref_pred_l = self.convert_sample_to_epsilon(noisy_action_l, ref_pred_l, timesteps)
 
-            ref_loss_w = (ref_pred_w - noise_w).pow(2).mean(dim=1)
-            ref_loss_l = (ref_pred_l - noise_l).pow(2).mean(dim=1)
+            ref_loss_w = (ref_pred_w - noise_w).pow(2).mean(dim=[1, 2])
+            ref_loss_l = (ref_pred_l - noise_l).pow(2).mean(dim=[1, 2])
             ref_diff = ref_loss_w - ref_loss_l
         
         scale_term = - 0.5 * self.beta_dpo

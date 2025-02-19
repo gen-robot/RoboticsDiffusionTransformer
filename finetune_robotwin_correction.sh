@@ -10,14 +10,14 @@ lr=$1
 type=$2
 
 run_name="rdt-robotwin-finetune-lr${lr}-type${type}"
-save_path="/nvme_data/liangzhi/rdt"
+save_path="/nvme0n1/rdt/checkpoints/"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
 export VISION_ENCODER_NAME="google/siglip-so400m-patch14-384"
 export OUTPUT_DIR="${save_path}/checkpoints/${run_name}-${now}"
 export CFLAGS="-I/usr/include"
 export LDFLAGS="-L/usr/lib/x86_64-linux-gnu"
-export CUTLASS_PATH="/nvme_data/liangzhi/installer/flash-attention/csrc/cutlass/"
+export CUTLASS_PATH="/nvme1n1/liangzhi/installer/flash-attention/csrc/cutlass/"
 
 # assert CUTLASS_PATH is set
 if [ -z "$CUTLASS_PATH" ]; then

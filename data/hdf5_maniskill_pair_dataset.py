@@ -54,7 +54,7 @@ class HDF5VLAPairDataset:
         # The name of your dataset
         self.DATASET_NAME = "agilex"
 
-        self.data_dir = "/nvme_data/embodied_agent/paired_data/maniskill"
+        self.data_dir = "/nvme1n1/embodied_agent/pair_data/maniskill"
         self.tasks = os.listdir(self.data_dir)
 
         # Multiple tasks
