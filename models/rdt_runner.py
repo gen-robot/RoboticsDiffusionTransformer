@@ -222,6 +222,92 @@ class RDTRunner(
         loss = F.mse_loss(pred, target)
         return loss
     
+    def update_beta_dpo(self, beta_dpo):
+        self.beta_dpo = beta_dpo
+
+    def convert_sample_to_epsilon(self, sample, model_output, timesteps):
+        t = timesteps
+
+        alpha_prod_t = self.noise_scheduler.alphas_cumprod[t]
+        beta_prod_t = 1 - alpha_prod_t
+
+        bs = alpha_prod_t.shape[0]
+        alpha_prod_t = alpha_prod_t.view(bs, 1, 1)
+        beta_prod_t = beta_prod_t.view(bs, 1, 1)
+
+        noise_output = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+
+        return noise_output
+
+    def compute_dpo_loss(self, lang_tokens, lang_attn_mask, img_tokens, 
+                         state_tokens, action_w, action_l, action_mask, 
+                         ctrl_freqs, ref_policy) -> torch.Tensor:
+        batch_size = lang_tokens.shape[0]
+        device = lang_tokens.device  
+
+        noise_w = torch.randn(action_w.shape, dtype=action_w.dtype, device=device)
+        noise_l = torch.randn(action_l.shape, dtype=action_l.dtype, device=device)
+
+        timesteps = torch.randint(
+            0, self.num_train_timesteps, 
+            (batch_size,), device=device
+        ).long()
+
+        noisy_action_w = self.noise_scheduler.add_noise(action_w, noise_w, timesteps)
+        noisy_action_l = self.noise_scheduler.add_noise(action_l, noise_l, timesteps)
+
+        state_action_traj_w = torch.cat([state_tokens, noisy_action_w], dim=1)
+        action_mask_w = action_mask.expand(-1, state_action_traj_w.shape[1], -1)
+        state_action_traj_w = torch.cat([state_action_traj_w, action_mask_w], dim=2)
+        lang_cond_w, img_cond_w, state_action_traj_w = self.adapt_conditions(
+            lang_tokens, img_tokens, state_action_traj_w)
+        pred_w = self.model(state_action_traj_w, ctrl_freqs, 
+                            timesteps, lang_cond_w, img_cond_w, 
+                            lang_mask=lang_attn_mask)
+
+        state_action_traj_l = torch.cat([state_tokens, noisy_action_l], dim=1)
+        action_mask_l = action_mask.expand(-1, state_action_traj_l.shape[1], -1)
+        state_action_traj_l = torch.cat([state_action_traj_l, action_mask_l], dim=2)
+        lang_cond_l, img_cond_l, state_action_traj_l = self.adapt_conditions(
+            lang_tokens, img_tokens, state_action_traj_l)
+        pred_l = self.model(state_action_traj_l, ctrl_freqs, 
+                            timesteps, lang_cond_l, img_cond_l, 
+                            lang_mask=lang_attn_mask)
+        
+        pred_w = self.convert_sample_to_epsilon(noisy_action_w, pred_w, timesteps)
+        pred_l = self.convert_sample_to_epsilon(noisy_action_l, pred_l, timesteps)
+
+        model_loss_w = (pred_w - noise_w).pow(2).mean(dim=1)
+        model_loss_l = (pred_l - noise_l).pow(2).mean(dim=1)
+        model_diff = model_loss_w - model_loss_l
+
+        with torch.no_grad():
+            ref_pred_w = ref_policy.model(state_action_traj_w, ctrl_freqs, 
+                                          timesteps, lang_cond_w, img_cond_w, 
+                                          lang_mask=lang_attn_mask)
+            ref_pred_l = ref_policy.model(state_action_traj_l, ctrl_freqs,
+                                          timesteps, lang_cond_l, img_cond_l, 
+                                          lang_attn_mask)
+            
+            ref_pred_w = self.convert_sample_to_epsilon(noisy_action_w, ref_pred_w, timesteps)
+            ref_pred_l = self.convert_sample_to_epsilon(noisy_action_l, ref_pred_l, timesteps)
+
+            ref_loss_w = (ref_pred_w - noise_w).pow(2).mean(dim=1)
+            ref_loss_l = (ref_pred_l - noise_l).pow(2).mean(dim=1)
+            ref_diff = ref_loss_w - ref_loss_l
+        
+        scale_term = - 0.5 * self.beta_dpo
+        inside_term = scale_term * (model_diff - ref_diff)
+        implicit_acc = (inside_term > 0).sum().float() / inside_term.size(0)
+        
+        dpo_loss = -1 * F.logsigmoid(inside_term).mean()
+
+        return dpo_loss, {
+                "implicit_acc": implicit_acc.mean(),
+                "avg_model_mse": 0.5 * (model_loss_w.mean() + model_loss_l.mean()),
+                "avg_ref_mse": 0.5 * (ref_loss_w.mean() + ref_loss_l.mean()),
+            }
+
     # ========= Inference  ============
     def predict_action(self, lang_tokens, lang_attn_mask, img_tokens, state_tokens,
                        action_mask, ctrl_freqs):

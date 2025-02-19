@@ -138,15 +138,15 @@ def step_action(Demo_class, model, step, use_jpg):
 
             model.update_obs(obs)
             Demo_class._take_picture()
-        if Demo_class.episode_step % Demo_class.save_freq == 0:
-            Demo_class._take_picture()
-            render_observation = Demo_class.get_obs()
-            render_obs = Demo_class.get_cam_obs(render_observation)
-            Demo_class.render_array.append((render_obs["head_cam"].transpose(1, 2, 0) * 255).astype(np.uint8))
-            Demo_class.front_cam_array.append((obs["front_cam"].transpose(1, 2, 0) * 255).astype(np.uint8))
-            Demo_class.left_cam_array.append((obs["left_cam"].transpose(1, 2, 0) * 255).astype(np.uint8))
-            Demo_class.right_cam_array.append((obs["right_cam"].transpose(1, 2, 0) * 255).astype(np.uint8))
-            Demo_class.data_list.append(render_observation)
+        # if Demo_class.episode_step % Demo_class.save_freq == 0:
+        #     Demo_class._take_picture()
+        #     render_observation = Demo_class.get_obs()
+        #     render_obs = Demo_class.get_cam_obs(render_observation)
+        #     Demo_class.render_array.append((render_obs["head_cam"].transpose(1, 2, 0) * 255).astype(np.uint8))
+        #     Demo_class.front_cam_array.append((obs["front_cam"].transpose(1, 2, 0) * 255).astype(np.uint8))
+        #     Demo_class.left_cam_array.append((obs["left_cam"].transpose(1, 2, 0) * 255).astype(np.uint8))
+        #     Demo_class.right_cam_array.append((obs["right_cam"].transpose(1, 2, 0) * 255).astype(np.uint8))
+        #     Demo_class.data_list.append(render_observation)
 
         if i % 5 == 0:
             Demo_class._update_render()
@@ -242,12 +242,7 @@ def detection(Demo_class, model, step):
 def correction_process(Demo_class, model: RDT, embeding_dict: dict, 
                        use_correction=False, eval_type='original', use_jpg=False):
 
-    render_dir = f"./outs/robotwin/{Demo_class.task_name}/{eval_type}/"
-    os.makedirs(render_dir, exist_ok=True)
-    os.makedirs(f"{render_dir}/cam_high", exist_ok=True)
-    os.makedirs(f"{render_dir}/cam_front", exist_ok=True)
-    os.makedirs(f"{render_dir}/cam_left", exist_ok=True)
-    os.makedirs(f"{render_dir}/cam_right", exist_ok=True)
+    start_time = time.time()
 
     step = 0
     Demo_class.test_num += 1
@@ -292,7 +287,7 @@ def correction_process(Demo_class, model: RDT, embeding_dict: dict,
     original_step = 0
     last_correction_type = "none"
 
-    while step < Demo_class.step_lim + 600:
+    while step < Demo_class.step_lim:
 
         if correction_period > 0:
             correction_period -= 1
@@ -328,31 +323,22 @@ def correction_process(Demo_class, model: RDT, embeding_dict: dict,
         
         Demo_class._take_picture()
 
-        print(f'step: {step} / {Demo_class.step_lim + 600}', end='\r')
+        now_time = time.time()
+        print(f'Step: {step} / {Demo_class.step_lim}. Total time in this episode: {now_time - start_time:.2f}s. Speed: {(now_time - start_time) / step:.2f} second/step.')
 
         if success_flag:
-            print("\nsuccess!")
             #self.success_record_list.append((self.test_num, 'success'))
             Demo_class.suc += 1
             if do_correction:
                 Demo_class.correction_suc += 1
                 Demo_class.correction_cnt += 1
 
-            save_mp4(f'{render_dir}/cam_high/{save_head_index + Demo_class.test_num}.mp4', Demo_class.render_array)
-            save_mp4(f'{render_dir}/cam_front/{save_head_index + Demo_class.test_num}.mp4', Demo_class.front_cam_array)
-            save_mp4(f'{render_dir}/cam_left/{save_head_index + Demo_class.test_num}.mp4', Demo_class.left_cam_array)
-            save_mp4(f'{render_dir}/cam_right/{save_head_index + Demo_class.test_num}.mp4', Demo_class.right_cam_array)
             return
         
         if Demo_class.actor_pose == False:
             break
         continue
 
-    print("\nfail!")
-    save_mp4(f'{render_dir}/cam_high/{save_head_index + Demo_class.test_num}.mp4', Demo_class.render_array)
-    save_mp4(f'{render_dir}/cam_front/{save_head_index + Demo_class.test_num}.mp4', Demo_class.front_cam_array)
-    save_mp4(f'{render_dir}/cam_left/{save_head_index + Demo_class.test_num}.mp4', Demo_class.left_cam_array)
-    save_mp4(f'{render_dir}/cam_right/{save_head_index + Demo_class.test_num}.mp4', Demo_class.right_cam_array)
     if do_correction:
         Demo_class.correction_cnt += 1
 
@@ -457,14 +443,6 @@ def test_policy(task_name, Demo_class, args, agent: RDT, st_seed, test_num=200,
         Demo_class._take_picture()
         now_seed += 1
 
-        result_file = f'./outs/robotwin/{task_name}/{eval_type}/result.txt'
-
-        with open(result_file, 'w') as f:
-            f.write(f"Success rate: {Demo_class.suc}/{Demo_class.test_num}\n")
-            if use_correction:
-                f.write(f"Correction success rate: {Demo_class.correction_suc}/{Demo_class.correction_cnt}\n")
-                f.write(f"Correction action success rate: {Demo_class.correction_action_suc}/{Demo_class.correction_action_suc + Demo_class.correction_action_fail}\n")
-    
     return now_seed, Demo_class.suc
 
 def main(usr_args):

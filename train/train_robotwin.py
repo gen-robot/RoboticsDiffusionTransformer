@@ -41,6 +41,10 @@ from models.rdt_runner import RDTRunner
 from train.dataset import DataCollatorForVLAConsumerDataset, VLAConsumerDataset
 from train.sample import log_sample_res
 
+try:
+    from ..data.hdf5_robotwin_val_dataset import RoboTwinVLADataset
+except ImportError:
+    from data.hdf5_robotwin_val_dataset import RoboTwinVLADataset
 
 if is_wandb_available():
     import wandb
@@ -310,7 +314,7 @@ def train(args, logger):
             enable_eef_action=args.eef_action,
             enable_qvel_obs=args.qvel_obs,
             use_robotwin=args.robotwin,
-            data_type=args.data_type,
+            coustom_dataset=RoboTwinVLADataset(type=args.data_type),
         )
     train_dataset = make_dataset(args, config)
     sample_dataset = make_dataset(args, config, is_sample=True)

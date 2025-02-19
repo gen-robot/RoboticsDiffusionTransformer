@@ -115,9 +115,8 @@ class VLAConsumerDataset(Dataset):
         enable_eef_obs=False,
         enable_eef_action=False,
         enable_qvel_obs=False,
-        use_maniskill=False,
+        coustom_dataset=None,
         use_robotwin=False,
-        data_type="all",
     ):
         super(VLAConsumerDataset, self).__init__()
         
@@ -148,12 +147,10 @@ class VLAConsumerDataset(Dataset):
         self.cam_ext_mask_prob = cam_ext_mask_prob
         self.use_hdf5 = use_hdf5
         self.hdf5_dataset = None
+        self.use_robotwin = use_robotwin
         if use_hdf5:
-            if use_maniskill:
-                self.hdf5_dataset = HDF5ManiSkillDataset(type=data_type)
-            elif use_robotwin:
-                self.hdf5_dataset = RoboTwinVLADataset(type=data_type)
-                self.use_robotwin = use_robotwin
+            if coustom_dataset is not None:
+                self.hdf5_dataset = coustom_dataset
             else:
                 self.hdf5_dataset = HDF5VLADataset(
                     data_path=data_path, 
@@ -340,6 +337,11 @@ class VLAConsumerDataset(Dataset):
                 data_dict["states"] = states \
                     if random.random() > self.cond_mask_prob else ds_state_mean
                 data_dict["actions"] = actions
+
+                # Load data for DPO
+                if self.use_hdf5 and "bad_actions" in res.keys():
+                    data_dict["bad_actions"] = res["bad_actions"]
+
                 data_dict["state_elem_mask"] = state_elem_mask \
                     if random.random() > self.cond_mask_prob else np.zeros_like(state_elem_mask)
                 
@@ -442,7 +444,7 @@ class VLAConsumerDataset(Dataset):
                 for k, v in data_dict.items():
                     assert not isinstance(v, np.ndarray), f"key: {k}, value: {v}"
                         # data_dict[k] = torch.from_numpy(v)
-        
+                
                 return data_dict
             except BaseException as e:
                 # Print the error info
@@ -502,6 +504,83 @@ class DataCollatorForVLAConsumerDataset(object):
         
         keys_to_stack = [
             'states', 'actions',
+            'state_elem_mask', 'state_norm',
+            "images"
+        ]
+        for key in keys_to_stack:
+            batch[key] = torch.stack(batch[key], dim=0)
+        
+        batch["ctrl_freqs"] = torch.tensor(batch["ctrl_freqs"])
+    
+        if len(input_ids) > 0:
+            input_ids = torch.nn.utils.rnn.pad_sequence(
+                input_ids,
+                batch_first=True,
+                padding_value=self.tokenizer.pad_token_id)
+            batch["input_ids"] = input_ids
+            batch["lang_attn_mask"] = input_ids.ne(self.tokenizer.pad_token_id)
+        else:
+            lang_embeds = torch.nn.utils.rnn.pad_sequence(
+                lang_embeds,
+                batch_first=True,
+                padding_value=0)
+            input_lang_attn_mask = torch.zeros(
+                lang_embeds.shape[0], lang_embeds.shape[1], dtype=torch.bool)
+            for i, l in enumerate(lang_embed_lens):
+                input_lang_attn_mask[i, :l] = True
+            batch["lang_embeds"] = lang_embeds
+            batch["lang_attn_mask"] = input_lang_attn_mask
+            
+            
+        return batch
+
+
+class DataCollatorForVLAPairDataset(object):
+    """Collate examples for supervised training."""
+
+    def __init__(self, tokenizer: transformers.PreTrainedTokenizer) -> None:
+        self.tokenizer = tokenizer
+
+    def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
+        batch = {
+            "states": [],
+            "actions": [],
+            "bad_actions": [],
+            "state_elem_mask": [],
+            "state_norm": [],
+            "images": [],
+            "data_indices": [],
+            "ctrl_freqs": []
+        }
+        input_ids = []
+        lang_embeds = []
+        lang_embed_lens = []
+        
+        for instance in instances:
+            # Convert all the numpy arrays to tensor
+            keys_to_check = [
+                'states', 'actions', 'bad_actions',
+                'state_elem_mask', 'state_norm',
+            ]
+            for key in keys_to_check:
+                if isinstance(instance[key], torch.Tensor):
+                    item = instance[key]
+                else:
+                    item = torch.from_numpy(instance[key])
+                batch[key].append(item)
+
+            if "input_ids" in instance:
+                input_ids.append(instance["input_ids"])
+            else:
+                lang_embeds.append(instance["lang_embed"])
+                lang_embed_lens.append(instance["lang_embed"].shape[0])
+            
+            batch["images"].append(torch.stack(instance["images"], dim=0))
+            batch["data_indices"].append(instance["data_idx"])
+            batch["ctrl_freqs"].append(instance["ctrl_freq"])
+        
+        keys_to_stack = [
+            'states', 'actions', 'bad_actions',
             'state_elem_mask', 'state_norm',
             "images"
         ]

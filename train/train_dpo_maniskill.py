@@ -38,15 +38,15 @@ from models.multimodal_encoder.siglip_encoder import SiglipVisionTower
 from models.multimodal_encoder.dinov2_encoder import DinoV2VisionTower
 from models.multimodal_encoder.t5_encoder import T5Embedder
 from models.rdt_runner import RDTRunner
-from train.dataset import DataCollatorForVLAConsumerDataset, VLAConsumerDataset
+from train.dataset import DataCollatorForVLAPairDataset, VLAConsumerDataset
 from train.sample import log_sample_res
 
 from scripts.maniskill_model import create_model
 
 try:
-    from ..data.hdf5_maniskill_dataset import HDF5VLADataset as HDF5ManiSkillDataset
+    from ..data.hdf5_maniskill_pair_dataset import HDF5VLAPairDataset as HDF5ManiSkillPairDataset
 except ImportError:
-    from data.hdf5_maniskill_dataset import HDF5VLADataset as HDF5ManiSkillDataset
+    from data.hdf5_maniskill_pair_dataset import HDF5VLAPairDataset as HDF5ManiSkillPairDataset
 
 if is_wandb_available():
     import wandb
@@ -196,7 +196,9 @@ def train(args, logger):
         logger.info("Constructing model from provided config.")
         raise NotImplementedError("Need to provide a pretrained model.")
         
-                                                                       
+    rdt.update_beta_dpo(args.beta_dpo)
+
+    ref_rdt = copy.deepcopy(rdt) # A reference model for DPO training                                                     
     ema_rdt = copy.deepcopy(rdt)
     ema_model = EMAModel(
         ema_rdt,
@@ -287,12 +289,12 @@ def train(args, logger):
             enable_eef_obs=args.eef_obs,
             enable_eef_action=args.eef_action,
             enable_qvel_obs=args.qvel_obs,
-            use_coustom_dataset=HDF5ManiSkillDataset(type=args.data_type),
+            coustom_dataset=HDF5ManiSkillPairDataset(),
         )
     train_dataset = make_dataset(args, config)
     sample_dataset = make_dataset(args, config, is_sample=True)
     
-    data_collator = DataCollatorForVLAConsumerDataset(tokenizer)                                                        
+    data_collator = DataCollatorForVLAPairDataset(tokenizer)                                                        
     
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -374,6 +376,7 @@ def train(args, logger):
                         ncols=100)
     progress_bar.set_description("Steps")
 
+    # TODO: change to DPO training
     loss_for_log = {}
     for epoch in range(first_epoch, args.num_train_epochs):
 
@@ -387,6 +390,7 @@ def train(args, logger):
                 # We only use the last state as input
                 states = states[:, -1:, :]
                 actions = batch["actions"].to(dtype=weight_dtype)
+                bad_actions = batch["bad_actions"].to(dtype=weight_dtype)
                 state_elem_mask = batch["state_elem_mask"].to(dtype=weight_dtype)
                 ctrl_freqs = batch["ctrl_freqs"]
 
@@ -404,14 +408,16 @@ def train(args, logger):
                         )["last_hidden_state"].detach()
                 
                 state_elem_mask = state_elem_mask.unsqueeze(1)
-                loss = rdt(
+                loss, info = rdt.compute_dpo_loss(
                     lang_tokens=text_embeds,
                     lang_attn_mask=lang_attn_mask,
                     img_tokens=image_embeds,
                     state_tokens=states,
-                    action_gt=actions,
+                    action_w=actions,
+                    action_l=bad_actions,
                     action_mask=state_elem_mask,
-                    ctrl_freqs=ctrl_freqs
+                    ctrl_freqs=ctrl_freqs,
+                    ref_policy=ref_rdt,
                 )
 
                 accelerator.backward(loss)
@@ -463,7 +469,13 @@ def train(args, logger):
                     logger.info(sample_loss_for_log)
                     accelerator.log(sample_loss_for_log, step=global_step)
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {
+                "loss": loss.detach().item(), 
+                "lr": lr_scheduler.get_last_lr()[0],
+                "implicit_acc": info["implicit_acc"].detach().item(),
+                "avg_model_mse": info["avg_model_mse"].detach().item(),
+                "avg_ref_mse": info["avg_ref_mse"].detach().item(),
+            }
             progress_bar.set_postfix(**logs)
             logs.update(loss_for_log)
             # logger.info(logs)

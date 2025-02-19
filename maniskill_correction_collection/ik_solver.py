@@ -29,6 +29,12 @@ class IKSolver(object):
         target_pose = Pose.create(target_pose)
         return target_pose
 
+    def compute_release_target_pose(self, cube_pose):
+        target_pose = cube_pose.clone()
+        target_pose[0, 2] += 0.04
+        target_pose = Pose.create(target_pose)
+        return target_pose
+
     def compute_target_action(self, target_pose, init_qpos):
         target_qpos = self.kinematics.compute_ik(
             target_pose,
