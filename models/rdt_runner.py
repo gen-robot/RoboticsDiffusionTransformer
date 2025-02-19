@@ -235,7 +235,7 @@ class RDTRunner(
         alpha_prod_t = alpha_prod_t.view(bs, 1, 1)
         beta_prod_t = beta_prod_t.view(bs, 1, 1)
 
-        noise_output = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+        noise_output = (sample - alpha_prod_t ** (0.5) * model_output) / beta_prod_t ** (0.5)
 
         return noise_output
 
