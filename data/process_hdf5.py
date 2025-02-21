@@ -62,7 +62,6 @@ for dir_root, _, files in os.walk(src_dir, followlinks=True):
                 img_list.append(img_bytes)
                 max_length = max(max_length, len(img_bytes))
 
-            # img_list = np.array(img_list, dtype=np.uint8)
             fixed_length_dtype = f'|S{max_length}'
             _ = image.create_dataset(cam_name, shape=len(img_list), dtype=fixed_length_dtype)
             # Write images into the dataset
