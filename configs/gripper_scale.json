@@ -1,5 +1,9 @@
 {
-    "rdt": {
+    "mobile_aloha": {
+        "qpos": [4.7908, 4.7888],
+        "action": [11.8997, 13.9231]
+    },
+    "mobile_aloha_v2": {
         "qpos": [4.7908, 4.7888],
         "action": [11.8997, 13.9231]
     },
@@ -10,5 +14,13 @@
     "panda": {
         "qpos": [1, 1],
         "action": [1, 1]
+    },
+    "google_robot": {
+        "qpos": 1,
+        "action": 1
+    },
+    "widowx_bridge": {
+        "qpos": 1,
+        "action": 1
     }
 }
