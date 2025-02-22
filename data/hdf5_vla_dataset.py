@@ -1,6 +1,7 @@
 import os
 import fnmatch
 import json
+import gc
 
 import h5py
 import yaml
@@ -10,9 +11,11 @@ import numpy as np
 try:
     from ..configs.state_vec import STATE_VEC_IDX_MAPPING
     from ..constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
+    from .rotation_utils_numpy import quaternion_to_ortho6d
 except ImportError:
     from configs.state_vec import STATE_VEC_IDX_MAPPING
     from constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
+    from data.rotation_utils_numpy import quaternion_to_ortho6d
 
 
 class HDF5VLADataset:
@@ -20,23 +23,72 @@ class HDF5VLADataset:
     This class is used to sample episodes from the embododiment dataset
     stored in HDF5.
     """
-    def __init__(self, data_path: str=None) -> None:
+    def __init__(
+            self, 
+            data_path: str=None, 
+            robot_name: str='rdt', 
+            use_precomp_lang_embed: bool=False,
+            max_demo_per_task: int=None,
+            instruction_mode: str="random",
+            enable_eef_obs=False,
+            enable_eef_action=False,
+            enable_qvel_obs=False,
+            dataset_name="cobot"
+    ) -> None:
         # [Modify] The path to the HDF5 dataset directory
         # Each HDF5 file contains one episode
         if data_path is None:
-            HDF5_DIR = f"{RDT_ROOT_DIR}/data/datasets/agilex/rdt_data/"
+            HDF5_DIR = f"{RDT_ROOT_DIR}/data/datasets/agilex/cobot_data/"
         else:
             HDF5_DIR = data_path
+        if max_demo_per_task is None:
+            max_demo_per_task = 999
 
-        self.DATASET_NAME = os.path.basename(HDF5_DIR)
+        self.DATASET_NAME = dataset_name + "_" + os.path.basename(HDF5_DIR)
+        self.use_precomp_lang_embed = use_precomp_lang_embed
+        self.instruction_mode = instruction_mode
+        self.enable_eef_obs = enable_eef_obs
+        self.enable_eef_action = enable_eef_action
+        self.enable_qvel_obs = enable_qvel_obs
+        self.robot_name = robot_name
+
+        with open(f'{RDT_CONFIG_DIR}/gripper_scale.json', 'r') as gs_file:
+            self.gs_dict = json.load(gs_file)
+            assert robot_name in self.gs_dict, f"Robot name {robot_name} not found in gripper scale dict."
+            self.gripper_qpos_scale = self.gs_dict[robot_name]['qpos']
+            self.gripper_action_scale = self.gs_dict[robot_name]['action']
 
         assert os.path.exists(HDF5_DIR), f"Dataset directory {HDF5_DIR} does not exist."
         
         self.file_paths = []
-        for root, _, files in os.walk(HDF5_DIR):
-            for filename in fnmatch.filter(files, '*.hdf5'):
+        self.invalid_file_paths = []
+        for root, _, files in os.walk(HDF5_DIR, followlinks=True):
+            for filename in sorted(
+                fnmatch.filter(files, '*.hdf5'), 
+                key=lambda x: int(x.split('_')[-1].split('.')[0])
+            ):
+                episode_id = int(filename.split('/')[-1].split('_')[-1].split('.')[0])
+                if episode_id >= max_demo_per_task:
+                    continue
                 file_path = os.path.join(root, filename)
-                self.file_paths.append(file_path)
+                file_dir = os.path.dirname(file_path)
+                if self.use_precomp_lang_embed:
+                    assert os.path.exists(os.path.join(file_dir, "precomp_lang_embeds")), \
+                        f"Language embeddings not found for {file_path} for precomputed language embeddings."
+                try:
+                    f = h5py.File(file_path, 'r', swmr=True)
+                    self.file_paths.append(file_path)
+                    f.close()
+                except:
+                    self.invalid_file_paths.append(file_path)
+                    print(f"Failed to open {file_path}.")
+
+        # write the invalid file paths to a file
+        with open(f'{RDT_CONFIG_DIR}/invalid_file_paths.txt', 'w') as f:
+            for file_path in self.invalid_file_paths:
+                f.write(f"{file_path}\n")
+
+        print(f"Found {len(self.file_paths)} HDF5 files in the dataset directory.")
 
         assert len(self.file_paths) > 0, "No HDF5 files found in the dataset directory."
 
@@ -61,7 +113,7 @@ class HDF5VLADataset:
     def get_dataset_name(self):
         return self.DATASET_NAME
     
-    def get_item(self, index: int=None, step_id: int=None, instr_mode: str="normal", state_only: bool=False):
+    def get_item(self, index: int=None, step_id: int=None, instr_mode: str=None, state_only: bool=False):
         """Get a training sample at a random timestep.
 
         Args:
@@ -84,6 +136,8 @@ class HDF5VLADataset:
                 file_path = np.random.choice(self.file_paths, p=self.episode_sample_weights)
             else:
                 file_path = self.file_paths[index]
+            if instr_mode is None:
+                instr_mode = self.instruction_mode
             valid, sample = self.parse_hdf5_file(file_path, step_id=step_id, instr_mode=instr_mode) \
                 if not state_only else self.parse_hdf5_file_state_only(file_path)
             if valid:
@@ -91,7 +145,7 @@ class HDF5VLADataset:
             else:
                 index = np.random.randint(0, len(self.file_paths))
     
-    def parse_hdf5_file(self, file_path, step_id: int=None, instr_mode: str="normal"):
+    def parse_hdf5_file(self, file_path, step_id: int=None, instr_mode: str="random"):
         """[Modify] Parse a hdf5 file to generate a training sample at
             a random timestep.
 
@@ -130,8 +184,8 @@ class HDF5VLADataset:
                     "cam_right_wrist_mask": ndarray
                 } or None if the episode is invalid.
         """
-        with h5py.File(file_path, 'r') as f:
-            qpos = f['observations']['qpos'][:]
+        with h5py.File(file_path, 'r', swmr=True) as f:
+            qpos = f['observations']['qpos'][:].copy()
             num_steps = qpos.shape[0]
             # [Optional] We drop too-short episode
             if num_steps < 128:
@@ -149,7 +203,7 @@ class HDF5VLADataset:
 
             # We randomly sample a timestep if step_id is not provided
             if step_id is None:
-                step_id = np.random.randint(first_idx-1, num_steps)
+                step_id = np.random.randint(first_idx-1, num_steps-1)
             
             # Load the instruction
             dir_path = os.path.dirname(file_path)
@@ -164,14 +218,30 @@ class HDF5VLADataset:
                 instruction_type = 'simplified_instruction'
             elif instr_mode == "expanded":
                 instruction_type = 'expanded_instruction'
+            elif instr_mode == "nonsense":
+                instruction_type = None
             else:
                 instruction_type = np.random.choice([
                     'instruction', 'simplified_instruction', 'expanded_instruction'])
-            instruction = instruction_dict[instruction_type]
-            if isinstance(instruction, list):
-                instruction = np.random.choice(instruction)
+            if instruction_type is None:
+                instruction = "This is a meaningless instruction that has nothing to do with any real task and is only used to test the effect of the language instruction."
+            else:
+                instruction = instruction_dict[instruction_type]
+                if isinstance(instruction, list):
+                    instruction = np.random.choice(instruction)
+            # FIXME: use_precomp_lang_embed will cover the instr_mode and randomly sample an instruction
             # You can also use precomputed language embeddings (recommended)
-            # instruction = "path/to/lang_embed.pt"
+            if self.use_precomp_lang_embed:
+                # Load the precomputed language embeddings
+                embeds_dir = os.path.join(dir_path, "precomp_lang_embeds", instruction_type)
+                all_embeds = [
+                    os.path.join(embeds_dir, p) for p in sorted(os.listdir(embeds_dir))
+                    if p.endswith(".pt")
+                ]
+                assert len(all_embeds) > 0, \
+                    "No language embeddings found in {}.".format(embeds_dir)
+                # randomly sample a language embedding
+                instruction = np.random.choice(all_embeds)
             
             # Assemble the meta
             meta = {
@@ -183,10 +253,17 @@ class HDF5VLADataset:
             
             # Rescale gripper to [0, 1]
             qpos = qpos / np.array(
-               [[1, 1, 1, 1, 1, 1, 4.7908, 1, 1, 1, 1, 1, 1, 4.7888]] 
+               [[1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[0], 
+                 1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[1]]] 
             )
-            target_qpos = f['action'][step_id:step_id+self.CHUNK_SIZE] / np.array(
-               [[1, 1, 1, 1, 1, 1, 11.8997, 1, 1, 1, 1, 1, 1, 13.9231]] 
+            if self.robot_name == "cobot":
+                # FIXME: note that this is a hack, the action is the qpos of the next step due to the improper way the data is collected
+                _action = f['observations']['qpos'][1:].copy()
+            else:
+                _action = f['action'][:].copy()
+            target_qpos = _action[step_id:step_id+self.CHUNK_SIZE] / np.array(
+               [[1, 1, 1, 1, 1, 1, self.gripper_action_scale[0], 
+                 1, 1, 1, 1, 1, 1, self.gripper_action_scale[1]]] 
             )
             
             # Parse the state and action
@@ -201,10 +278,63 @@ class HDF5VLADataset:
                     actions,
                     np.tile(actions[-1:], (self.CHUNK_SIZE-actions.shape[0], 1))
                 ], axis=0)
-            
+
+            if self.enable_eef_obs or self.enable_eef_action:
+                if 'ee_pose' not in f['observations']:
+                    print(f"[WARNING] ee_pose not found in {file_path}!!!!!!!!")
+                    enable_eef_obs = False
+                    enable_eef_action = False
+                else:
+                    ee_pose = f['observations']['ee_pose'][:].copy()
+                    enable_eef_obs = self.enable_eef_obs
+                    enable_eef_action = self.enable_eef_action
+            else:
+                enable_eef_obs = False
+                enable_eef_action = False
+
+            # FIXME: std/mean/norm should be over the whole episode instead of the current step
+            if enable_eef_obs or enable_eef_action:
+                ee_pose_l, ee_pose_r = ee_pose[:, :7], ee_pose[:, 7:]
+                ee_pos_l, ee_quat_l = ee_pose_l[:, :3], ee_pose_l[:, 3:]
+                ee_rot6d_l = quaternion_to_ortho6d(ee_quat_l, 'xyzw')
+                ee_pos_r, ee_quat_r = ee_pose_r[:, :3], ee_pose_r[:, 3:]
+                ee_rot6d_r = quaternion_to_ortho6d(ee_quat_r, 'xyzw')
+                eef_all = np.concatenate([
+                    ee_pos_l, ee_rot6d_l, ee_pos_r, ee_rot6d_r
+                    ], axis=-1)
+
+            if enable_eef_obs:
+                eef = eef_all[step_id:step_id+1]
+                eef_std = np.std(eef_all, axis=0)
+                eef_mean = np.mean(eef_all, axis=0)
+                eef_norm = np.sqrt(np.mean(eef_all**2, axis=0))
+            else:
+                eef, eef_std, eef_mean, eef_norm = None, None, None, None
+
+            if enable_eef_action:
+                valid_step_id = min(step_id+1, num_steps-1) # if step_id is the last step, use the last step's eef
+                eef_actions = eef_all[valid_step_id:valid_step_id+self.CHUNK_SIZE]
+                
+                if eef_actions.shape[0] < self.CHUNK_SIZE:
+                    # Pad the actions using the last action
+                    eef_actions = np.concatenate([
+                        eef_actions,
+                        np.tile(eef_actions[-1:], (self.CHUNK_SIZE-eef_actions.shape[0], 1))
+                    ], axis=0)
+            else:
+                eef_actions = None
+
+            if self.enable_qvel_obs:
+                qvel = f['observations']['qvel'][:].copy()
+                state_qvel = qvel[step_id:step_id+1]
+                state_qvel_std = np.std(qvel, axis=0)
+                state_qvel_mean = np.mean(qvel, axis=0)
+                state_qvel_norm = np.sqrt(np.mean(qvel**2, axis=0))
+            else:
+                state_qvel, state_qvel_std, state_qvel_mean, state_qvel_norm = None, None, None, None
             
             # Fill the state/action into the unified vector
-            def fill_in_state(values):
+            def fill_in_state(qpos, eef=None, qvel=None):
                 # Target indices corresponding to your state space
                 # In this example: 6 joints + 1 gripper for each arm
                 UNI_STATE_INDICES = [
@@ -216,28 +346,62 @@ class HDF5VLADataset:
                 ] + [
                     STATE_VEC_IDX_MAPPING["right_gripper_open"]
                 ]
-                uni_vec = np.zeros(values.shape[:-1] + (self.STATE_DIM,))
-                uni_vec[..., UNI_STATE_INDICES] = values
+                uni_vec = np.zeros(qpos.shape[:-1] + (self.STATE_DIM,))
+                uni_vec[..., UNI_STATE_INDICES] = qpos
+
+                if eef is not None:
+                    UNI_EEF_INDICES = [
+                        STATE_VEC_IDX_MAPPING[f"left_eef_pos_{i}"] for i in ['x', 'y', 'z']
+                    ] + [
+                        STATE_VEC_IDX_MAPPING[f"left_eef_angle_{i}"] for i in range(6)
+                    ] + [
+                        STATE_VEC_IDX_MAPPING[f"right_eef_pos_{i}"] for i in ['x', 'y', 'z']
+                    ] + [
+                        STATE_VEC_IDX_MAPPING[f"right_eef_angle_{i}"] for i in range(6)
+                    ]
+                    uni_vec[..., UNI_EEF_INDICES] = eef
+
+                if qvel is not None:
+                    UNI_QVEL_INDICES = [
+                        STATE_VEC_IDX_MAPPING[f"left_arm_joint_{i}_vel"] for i in range(6)
+                    ] + [
+                        STATE_VEC_IDX_MAPPING["left_gripper_open_vel"]
+                    ] + [
+                        STATE_VEC_IDX_MAPPING[f"right_arm_joint_{i}_vel"] for i in range(6)
+                    ] + [
+                        STATE_VEC_IDX_MAPPING["right_gripper_open_vel"]
+                    ]
+                    uni_vec[..., UNI_QVEL_INDICES] = qvel
+
                 return uni_vec
-            
-            
-            state = fill_in_state(state)
-            state_indicator = fill_in_state(np.ones_like(state_std))
-            state_std = fill_in_state(state_std)
-            state_mean = fill_in_state(state_mean)
-            state_norm = fill_in_state(state_norm)
+            state = fill_in_state(state, eef, state_qvel)
+            state_indicator = fill_in_state(
+                np.ones_like(state_std), 
+                np.ones_like(eef_std) if eef is not None else None,
+                np.ones_like(state_qvel_std) if state_qvel is not None else None
+            )
+            state_std = fill_in_state(state_std, eef_std, state_qvel_std)
+            state_mean = fill_in_state(state_mean, eef_mean, state_qvel_mean)
+            state_norm = fill_in_state(state_norm, eef_norm, state_qvel_norm)
             # If action's format is different from state's,
             # you may implement fill_in_action()
             raw_actions = actions.copy()
-            actions = fill_in_state(actions)
+            actions = fill_in_state(actions, eef_actions)
             
             # Parse the images
             def parse_img(key):
                 imgs = []
+                # Preload all necessary data to avoid repeated HDF5 access
+                img_data = []
+                all_images = f['observations']['images'][key][:].copy()
                 for i in range(max(step_id-self.IMG_HISORY_SIZE+1, 0), step_id+1):
-                    img = f['observations']['images'][key][i]
-                    imgs.append(cv2.imdecode(np.frombuffer(img, np.uint8), cv2.IMREAD_COLOR))
-                imgs = np.stack(imgs)
+                    img = all_images[i]
+                    if f.attrs.get('compress', True):
+                        img_data.append(cv2.imdecode(np.frombuffer(img, np.uint8), cv2.IMREAD_COLOR))
+                    else:
+                        img_data.append(img)
+                imgs = np.stack(img_data)
+                # del img_data; gc.collect()
                 if imgs.shape[0] < self.IMG_HISORY_SIZE:
                     # Pad the images using the first image
                     imgs = np.concatenate([
@@ -294,8 +458,8 @@ class HDF5VLADataset:
                     "action": ndarray,          # action[:], (T, STATE_DIM).
                 } or None if the episode is invalid.
         """
-        with h5py.File(file_path, 'r') as f:
-            qpos = f['observations']['qpos'][:]
+        with h5py.File(file_path, 'r', swmr=True) as f:
+            qpos = f['observations']['qpos'][:].copy()
             num_steps = qpos.shape[0]
             # [Optional] We drop too-short episode
             if num_steps < 128:
@@ -313,38 +477,14 @@ class HDF5VLADataset:
             
             # Rescale gripper to [0, 1]
             qpos = qpos / np.array(
-               [[1, 1, 1, 1, 1, 1, 4.7908, 1, 1, 1, 1, 1, 1, 4.7888]] 
+               [[1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[0], 
+                 1, 1, 1, 1, 1, 1, self.gripper_qpos_scale[1]]] 
             )
-            target_qpos = f['action'][:] / np.array(
-               [[1, 1, 1, 1, 1, 1, 11.8997, 1, 1, 1, 1, 1, 1, 13.9231]] 
+            target_qpos = f['action'][:].copy() / np.array(
+               [[1, 1, 1, 1, 1, 1, self.gripper_action_scale[0], 
+                 1, 1, 1, 1, 1, 1, self.gripper_action_scale[1]]] 
             )
             
-            # # test code
-            # target_qpos = f['action'][:] / np.array(
-            #    [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]] 
-            # )
-            # max_l = target_qpos[0][6]
-            # min_l = target_qpos[0][6]
-            # max_r = target_qpos[0][13]
-            # min_r = target_qpos[0][13]
-            # not_l= 0
-            # not_r = 0
-            # for i in range(322):
-            #     if(target_qpos[i][6]>max_l):
-            #         max_l = target_qpos[i][6]
-            #     elif(target_qpos[i][6]<min_l):
-            #         min_l = target_qpos[i][6]
-            #     else:
-            #         not_l+=1
-                
-            #     if(target_qpos[i][13]>max_r):
-            #         max_r = target_qpos[i][13]
-            #     elif(target_qpos[i][13]<min_r):
-            #         min_r = target_qpos[i][13] 
-            #     else:
-            #         not_r+=1
-            # import pdb;pdb.set_trace()
-       
             # Parse the state and action
             state = qpos[first_idx-1:]
             action = target_qpos[first_idx-1:]
@@ -375,214 +515,12 @@ class HDF5VLADataset:
             }
 
 
-class MyHDF5VLADataset(HDF5VLADataset):
-    def __init__(self) -> None:
-        super().__init__()
-    
-    # Change the parameter, add step id for parse_hdf5_file using
-    def get_item(self, step_id, index: int=None, state_only=False):
-        """Get a training sample at a random timestep.
-
-        Args:
-            index (int, optional): the index of the episode.
-                If not provided, a random episode will be selected.
-            state_only (bool, optional): Whether to return only the state.
-                In this way, the sample will contain a complete trajectory rather
-                than a single timestep. Defaults to False.
-
-        Returns:
-           sample (dict): a dictionary containing the training sample.
-        """
-        while True:
-            if index is None:
-                file_path = np.random.choice(self.file_paths, p=self.episode_sample_weights)
-            else:
-                file_path = self.file_paths[index]
-            valid, sample = self.parse_hdf5_file(file_path,step_id) \
-                if not state_only else self.parse_hdf5_file_state_only(file_path)
-            if valid:
-                return sample, file_path
-            else:
-                index = np.random.randint(0, len(self.file_paths))
-    
-    # Change the parameter, add step id instead of randint
-    def parse_hdf5_file(self, file_path, step_id):
-        """[Modify] Parse a hdf5 file to generate a training sample at
-            a random timestep.
-
-        Args:
-            file_path (str): the path to the hdf5 file
-        
-        Returns:
-            valid (bool): whether the episode is valid, which is useful for filtering.
-                If False, this episode will be dropped.
-            dict: a dictionary containing the training sample,
-                {
-                    "meta": {
-                        "dataset_name": str,    # the name of your dataset.
-                        "#steps": int,          # the number of steps in the episode,
-                                                # also the total timesteps.
-                        "instruction": str      # the language instruction for this episode.
-                    },                           
-                    "step_id": int,             # the index of the sampled step,
-                                                # also the timestep t.
-                    "state": ndarray,           # state[t], (1, STATE_DIM).
-                    "state_std": ndarray,       # std(state[:]), (STATE_DIM,).
-                    "state_mean": ndarray,      # mean(state[:]), (STATE_DIM,).
-                    "state_norm": ndarray,      # norm(state[:]), (STATE_DIM,).
-                    "actions": ndarray,         # action[t:t+CHUNK_SIZE], (CHUNK_SIZE, STATE_DIM).
-                    "state_indicator", ndarray, # indicates the validness of each dim, (STATE_DIM,).
-                    "cam_high": ndarray,        # external camera image, (IMG_HISORY_SIZE, H, W, 3)
-                                                # or (IMG_HISORY_SIZE, 0, 0, 0) if unavailable.
-                    "cam_high_mask": ndarray,   # indicates the validness of each timestep, (IMG_HISORY_SIZE,) boolean array.
-                                                # For the first IMAGE_HISTORY_SIZE-1 timesteps, the mask should be False.
-                    "cam_left_wrist": ndarray,  # left wrist camera image, (IMG_HISORY_SIZE, H, W, 3).
-                                                # or (IMG_HISORY_SIZE, 0, 0, 0) if unavailable.
-                    "cam_left_wrist_mask": ndarray,
-                    "cam_right_wrist": ndarray, # right wrist camera image, (IMG_HISORY_SIZE, H, W, 3).
-                                                # or (IMG_HISORY_SIZE, 0, 0, 0) if unavailable.
-                                                # If only one wrist, make it right wrist, plz.
-                    "cam_right_wrist_mask": ndarray
-                } or None if the episode is invalid.
-        """
-        with h5py.File(file_path, 'r') as f:
-            qpos = f['observations']['qpos'][:]
-            num_steps = qpos.shape[0]
-            # [Optional] We drop too-short episode
-            if num_steps < 128:
-                return False, None
-            
-            # [Optional] We skip the first few still steps
-            EPS = 1e-2
-            # Get the idx of the first qpos whose delta exceeds the threshold
-            qpos_delta = np.abs(qpos - qpos[0:1])
-            indices = np.where(np.any(qpos_delta > EPS, axis=1))[0]
-            if len(indices) > 0:
-                first_idx = indices[0]
-            else:
-                raise ValueError("Found no qpos that exceeds the threshold.")
-            
-            # Load the instruction
-            dir_path = os.path.dirname(file_path)
-            with open(os.path.join(dir_path, 'expanded_instruction_gpt-4-turbo.json'), 'r') as f_instr:
-                instruction_dict = json.load(f_instr)
-            # We have 1/3 prob to use original instruction,
-            # 1/3 to use simplified instruction,
-            # and 1/3 to use expanded instruction.
-            # TODO -> Choose the instructions you like.!!!
-            instruction_type = np.random.choice([
-                'instruction', 'simplified_instruction', 'expanded_instruction'])
-            instruction_type = 'instruction' #TODO
-            instruction = instruction_dict[instruction_type]
-            if isinstance(instruction, list):
-                instruction = np.random.choice(instruction)
-            # You can also use precomputed language embeddings (recommended)
-            # instruction = "path/to/lang_embed.pt"
-            
-            # Assemble the meta
-            meta = {
-                "dataset_name": self.DATASET_NAME,
-                "#steps": num_steps,
-                "step_id": step_id,
-                "instruction": instruction
-            }
-            # Rescale gripper to [0, 1]
-            qpos = qpos / np.array(
-               [[1, 1, 1, 1, 1, 1, 4.7908, 1, 1, 1, 1, 1, 1, 4.7888]] 
-            )
-            target_qpos = f['action'][step_id:step_id+self.CHUNK_SIZE] / np.array(
-               [[1, 1, 1, 1, 1, 1, 11.8997, 1, 1, 1, 1, 1, 1, 13.9231]] 
-            )
-            
-            # Parse the state and action
-            state = qpos[step_id:step_id+1]
-            state_std = np.std(qpos, axis=0)
-            state_mean = np.mean(qpos, axis=0)
-            state_norm = np.sqrt(np.mean(qpos**2, axis=0))
-            actions = target_qpos
-            if actions.shape[0] < self.CHUNK_SIZE:
-                # Pad the actions using the last action
-                actions = np.concatenate([
-                    actions,
-                    np.tile(actions[-1:], (self.CHUNK_SIZE-actions.shape[0], 1))
-                ], axis=0)
-            
-            
-            # Fill the state/action into the unified vector
-            def fill_in_state(values):
-                # Target indices corresponding to your state space
-                # In this example: 6 joints + 1 gripper for each arm
-                UNI_STATE_INDICES = [
-                    STATE_VEC_IDX_MAPPING[f"left_arm_joint_{i}_pos"] for i in range(6)
-                ] + [
-                    STATE_VEC_IDX_MAPPING["left_gripper_open"]
-                ] + [
-                    STATE_VEC_IDX_MAPPING[f"right_arm_joint_{i}_pos"] for i in range(6)
-                ] + [
-                    STATE_VEC_IDX_MAPPING["right_gripper_open"]
-                ]
-                uni_vec = np.zeros(values.shape[:-1] + (self.STATE_DIM,)) # statedim = 128
-                uni_vec[..., UNI_STATE_INDICES] = values
-                return uni_vec
-            
-            
-            state = fill_in_state(state)
-            state_indicator = fill_in_state(np.ones_like(state_std))
-            state_std = fill_in_state(state_std)
-            state_mean = fill_in_state(state_mean)
-            state_norm = fill_in_state(state_norm)
-            # If action's format is different from state's,
-            # you may implement fill_in_action()
-            actions = fill_in_state(actions)
-            
-            # Parse the images
-            def parse_img(key):
-                imgs = []
-                for i in range(max(step_id-self.IMG_HISORY_SIZE+1, 0), step_id+1):
-                    img = f['observations']['images'][key][i]
-                    imgs.append(cv2.imdecode(np.frombuffer(img, np.uint8), cv2.IMREAD_COLOR))
-                imgs = np.stack(imgs)
-                if imgs.shape[0] < self.IMG_HISORY_SIZE:
-                    # Pad the images using the first image
-                    imgs = np.concatenate([
-                        np.tile(imgs[:1], (self.IMG_HISORY_SIZE-imgs.shape[0], 1, 1, 1)),
-                        imgs
-                    ], axis=0)
-                return imgs
-            # `cam_high` is the external camera image
-            cam_high = parse_img('cam_high')
-            # For step_id = first_idx - 1, the valid_len should be one
-            valid_len = min(step_id - (first_idx - 1) + 1, self.IMG_HISORY_SIZE)
-            cam_high_mask = np.array(
-                [False] * (self.IMG_HISORY_SIZE - valid_len) + [True] * valid_len
-            )
-            cam_left_wrist = parse_img('cam_left_wrist')
-            cam_left_wrist_mask = cam_high_mask.copy()
-            cam_right_wrist = parse_img('cam_right_wrist')
-            cam_right_wrist_mask = cam_high_mask.copy()
-            
-            # Return the resulting sample
-            # For unavailable images, return zero-shape arrays, i.e., (IMG_HISORY_SIZE, 0, 0, 0)
-            # E.g., return np.zeros((self.IMG_HISORY_SIZE, 0, 0, 0)) for the key "cam_left_wrist",
-            # if the left-wrist camera is unavailable on your robot
-            return True, {
-                "meta": meta,
-                "state": state,
-                "state_std": state_std,
-                "state_mean": state_mean,
-                "state_norm": state_norm,
-                "actions": actions,
-                "state_indicator": state_indicator,
-                "cam_high": cam_high,
-                "cam_high_mask": cam_high_mask,
-                "cam_left_wrist": cam_left_wrist,
-                "cam_left_wrist_mask": cam_left_wrist_mask,
-                "cam_right_wrist": cam_right_wrist,
-                "cam_right_wrist_mask": cam_right_wrist_mask
-            }
-
 if __name__ == "__main__":
-    ds = HDF5VLADataset()
+    data_path = "/home/gaofeng/arm_ws/EmbodiedAgent/quick_jump/rdt/data/datasets/agilex/cobot_data/new_pick_coke"
+    robot_name = "cobot"
+    ds = HDF5VLADataset(data_path=data_path, robot_name=robot_name)
     for i in range(len(ds)):
         print(f"Processing episode {i}/{len(ds)}...")
-        ds.get_item(i)
+        for j in range(5):
+            print(f"  Sample {j+1}/5")
+            ds.get_item(i)

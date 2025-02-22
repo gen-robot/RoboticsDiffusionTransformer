@@ -54,6 +54,10 @@ class RDTRunner(
             in_features=state_token_dim * 2,    # state + state mask (indicator)
             out_features=hidden_size
         )
+
+        self.lang_adaptor = self.lang_adaptor.to(dtype=dtype)
+        self.img_adaptor = self.img_adaptor.to(dtype=dtype)
+        self.state_adaptor = self.state_adaptor.to(dtype=dtype)
         
         # Create the noise scheduler
         noise_scheduler_config = config['noise_scheduler']

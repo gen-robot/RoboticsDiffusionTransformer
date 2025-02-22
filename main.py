@@ -1,9 +1,13 @@
 import argparse
 import os
+import tracemalloc
+from distutils.util import strtobool
 from train.train import train
 from train.eval import eval
+from train.train_maniskill import train as train_maniskill
 
 from accelerate.logging import get_logger
+from setproctitle import setproctitle
 
 
 def parse_args(input_args=None):
@@ -19,6 +23,30 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help="Path to the dataset for evaluation.",
+    )
+    parser.add_argument(
+        "--robot_name",
+        type=str,
+        default='rdt',
+        help="Name of the robot.",
+    )
+    parser.add_argument(
+        "--run_name",
+        type=str,
+        default=None,
+        help="Name of the run for wandb logging.",
+    )
+    parser.add_argument(
+        "--lora_rank",
+        type=int,
+        default=-1,
+        help="LoRA rank for low-rank finetuning instead of full-rank finetuning, -1 for full-rank finetuning.",
+    )
+    parser.add_argument(
+        "--chunk_size",
+        type=int,
+        default=64,
+        help="Action chunk size for model output."
     )
     parser.add_argument(
         "--config_path",
@@ -41,6 +69,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--pretrained_vision_encoder_name_or_path",
         type=str,
+        # nargs="+",
         default=None,
         help="Pretrained vision encoder name or path if not the same as model_name",
     )
@@ -94,7 +123,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--checkpoints_total_limit",
         type=int,
-        default=None,
+        default=5,
         help=(
             "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
             " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
@@ -295,6 +324,41 @@ def parse_args(input_args=None):
         help="Whether to load the pretrain dataset or finetune dataset."
     )
 
+    parser.add_argument('--max_demo_per_task',
+        type=int,
+        default=100,
+        required=False,
+        help="The maximum number of demonstrations per task."
+    )
+
+    parser.add_argument('--instruction_mode',
+        type=str,
+        default="random",
+        required=False,
+        help="The mode of instruction generation, choose between ['random', 'nonsense']."
+    )
+
+    parser.add_argument('--eef_obs',
+        type=str,
+        default='False',
+        help="Whether to use the end-effector observation."
+    )
+
+    parser.add_argument('--qvel_obs',
+        type=str,
+        default='False',
+        help="Whether to use the end-effector observation."
+    )
+
+    parser.add_argument('--eef_action',
+        type=str,
+        default='False',
+        help="Whether to predict the end-effector action."
+    )
+
+    parser.add_argument("--maniskill", action="store_true", help="Whether to run the maniskill model.")
+    parser.add_argument("--maniskill_data_type", type=str, default="all", help="The type of data to use for maniskill model.")
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -310,7 +374,30 @@ def parse_args(input_args=None):
 if __name__ == "__main__":
     logger = get_logger(__name__)
     args = parse_args()
+    if args.run_name is None:
+        setproctitle("rdt-ft")
+    else:
+        setproctitle(args.run_name)
+
+    if isinstance(args.eef_obs, str):
+        args.eef_obs = bool(strtobool(args.eef_obs))
+    if isinstance(args.eef_action, str):
+        args.eef_action = bool(strtobool(args.eef_action))
+    if isinstance(args.qvel_obs, str):
+        args.qvel_obs = bool(strtobool(args.qvel_obs))
+
+    print("eef_obs", args.eef_obs, bool(args.eef_obs))
+    print("eef_action", args.eef_action, bool(args.eef_action))
+    print("qvel_obs", args.qvel_obs, bool(args.qvel_obs))
+
+    # tracemalloc.start()
+    # current, peak = tracemalloc.get_traced_memory()
+    # print(f"[Rank {os.environ.get('LOCAL_RANK',-1)}] Current memory usage: {current / 1024**3:.2f} GB")
+    # print(f"[Rank {os.environ.get('LOCAL_RANK',-1)}] Peak memory usage: {peak / 1024**3:.2f} GB")
+        
     if args.eval:
         eval(args, logger)
-    else:
+    elif not args.maniskill:
         train(args, logger)
+    else:
+        train_maniskill(args, logger)

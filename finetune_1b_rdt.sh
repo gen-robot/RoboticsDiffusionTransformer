@@ -5,9 +5,11 @@ export NCCL_IB_DISABLE=0
 export NCCL_DEBUG=INFO
 export NCCL_NVLS_ENABLE=0
 
+now="$(date +"%Y%m%d-%H%M%S")"
+
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
 export VISION_ENCODER_NAME="google/siglip-so400m-patch14-384"
-export OUTPUT_DIR="./checkpoints/rdt-finetune-170m"
+export OUTPUT_DIR="./checkpoints/rdt_data-finetune-1b-${now}"
 export CFLAGS="-I/usr/include"
 export LDFLAGS="-L/usr/lib/x86_64-linux-gnu"
 # export CUTLASS_PATH="/path/to/cutlass"
@@ -41,7 +43,8 @@ fi
 
 accelerate launch main.py \
     --deepspeed="./configs/zero2.json" \
-    --pretrained_model_name_or_path="google/rdt-170m" \
+    --data_path="/home/gaofeng/arm_ws/EmbodiedAgent/RDT/data/datasets/agilex/rdt_data" \
+    --pretrained_model_name_or_path="google/rdt-1b" \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
     --pretrained_vision_encoder_name_or_path=$VISION_ENCODER_NAME \
     --output_dir=$OUTPUT_DIR \

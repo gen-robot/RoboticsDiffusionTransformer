@@ -15,13 +15,18 @@ import transformers
 
 try:
     from ..constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
+    from ..data.compute_dataset_stat_hdf5 import process_hdf5_dataset
     from ..data.filelock import FileLock
-    from ..data.hdf5_vla_dataset import HDF5VLADataset,MyHDF5VLADataset
+    from ..data.hdf5_vla_dataset import HDF5VLADataset
+    from ..data.hdf5_maniskill_dataset import HDF5VLADataset as HDF5ManiSkillDataset
     from .image_corrupt import image_corrupt
-except ImportError:
+except ImportError as e:
+    print(e)
     from constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
+    from data.compute_dataset_stat_hdf5 import process_hdf5_dataset
     from data.filelock import FileLock
-    from data.hdf5_vla_dataset import HDF5VLADataset,MyHDF5VLADataset
+    from data.hdf5_vla_dataset import HDF5VLADataset
+    from data.hdf5_maniskill_dataset import HDF5VLADataset as HDF5ManiSkillDataset
     from train.image_corrupt import image_corrupt
 
 
@@ -102,7 +107,15 @@ class VLAConsumerDataset(Dataset):
         state_noise_snr=None,
         use_hdf5=False,
         use_precomp_lang_embed=False,
-        data_path=None
+        data_path=None,
+        robot_name='rdt',
+        max_demo_per_task=100,
+        instruction_mode="random",
+        enable_eef_obs=False,
+        enable_eef_action=False,
+        enable_qvel_obs=False,
+        use_maniskill=False,
+        maniskill_data_type="all",
     ):
         super(VLAConsumerDataset, self).__init__()
         
@@ -134,7 +147,18 @@ class VLAConsumerDataset(Dataset):
         self.use_hdf5 = use_hdf5
         self.hdf5_dataset = None
         if use_hdf5:
-            self.hdf5_dataset = HDF5VLADataset(data_path)
+            if use_maniskill:
+                self.hdf5_dataset = HDF5ManiSkillDataset(stat_type=maniskill_data_type)
+            else:
+                self.hdf5_dataset = HDF5VLADataset(
+                    data_path=data_path, 
+                    robot_name=robot_name, 
+                    use_precomp_lang_embed=use_precomp_lang_embed, 
+                    max_demo_per_task=max_demo_per_task,
+                    instruction_mode=instruction_mode,
+                    enable_eef_obs=enable_eef_obs,
+                    enable_eef_action=enable_eef_action,
+                    enable_qvel_obs=enable_qvel_obs,)
         self.use_precomp_lang_embed = use_precomp_lang_embed
         if use_precomp_lang_embed:
             self.empty_lang_embed = torch.load(f"{RDT_ROOT_DIR}/data/empty_lang_embed.pt")
@@ -144,6 +168,27 @@ class VLAConsumerDataset(Dataset):
         with open(f"{RDT_CONFIG_DIR}/dataset_stat.json", 'r') as f:
             dataset_stat = json.load(f)
         self.dataset_stat = dataset_stat
+
+        if use_hdf5 and self.hdf5_dataset.get_dataset_name() not in self.dataset_stat:
+            print(f"[WARNING] Dataset stat for {self.hdf5_dataset.get_dataset_name()} not found, will compute it.")
+            _temp_dataset_stat = process_hdf5_dataset(self.hdf5_dataset)
+            self.dataset_stat[
+                _temp_dataset_stat["dataset_name"]
+            ] = _temp_dataset_stat
+            with open(f"{RDT_CONFIG_DIR}/dataset_stats/{_temp_dataset_stat['dataset_name']}.json", 'w') as f:
+                json.dump({
+                    _temp_dataset_stat['dataset_name']: _temp_dataset_stat
+                    }, f, indent=4)
+            print(f"Dataset stat for {self.hdf5_dataset.get_dataset_name()} computed and saved.")
+
+        if use_hdf5 and self.hdf5_dataset.get_dataset_name() not in self.dataset_name2id:
+            print(f"[WARNING] Dataset name {self.hdf5_dataset.get_dataset_name()} not found in the dataset name list.")
+            self.dataset_name2id[self.hdf5_dataset.get_dataset_name()] = len(self.dataset_name2id)
+            self.dataset_id2name[len(self.dataset_id2name)] = self.hdf5_dataset.get_dataset_name()
+
+        if use_hdf5 and self.hdf5_dataset.get_dataset_name() not in self.control_freq:
+            print(f"[WARNING] Control frequency for {self.hdf5_dataset.get_dataset_name()} not found, will use 0.")
+            self.control_freq[self.hdf5_dataset.get_dataset_name()] = 25 # FIXME: this is a hard-coded value for cobot magic robot
         
         self.tokenizer = tokenizer
         self.image_size = image_size
@@ -249,7 +294,10 @@ class VLAConsumerDataset(Dataset):
     
     def __getitem__(self, index):
         # For robustness, we will try to load the data until we succeed
-        while True:
+        count = 0
+        while count < 100:
+            count += 1
+            # while True:
             data_dict = None
             try:
                 if self.use_hdf5:
@@ -363,7 +411,7 @@ class VLAConsumerDataset(Dataset):
                 if self.use_precomp_lang_embed:
                     if content["instruction"][-1] == ".":
                         content["instruction"] = content["instruction"][:-1]
-                    data_dict["lang_embed"] = torch.load(content["instruction"]) \
+                    data_dict["lang_embed"] = torch.load(content["instruction"])["embeddings"] \
                         if random.random() > self.cond_mask_prob else self.empty_lang_embed
                 else:
                     instruction = content["instruction"] \
@@ -396,6 +444,8 @@ class VLAConsumerDataset(Dataset):
                 traceback.print_exc()
                 # Try incresing the index
                 index = (index + 1) % len(self)
+
+        raise RuntimeError("Failed to load sample.")
 
 
 class DataCollatorForVLAConsumerDataset(object):
@@ -447,8 +497,11 @@ class DataCollatorForVLAConsumerDataset(object):
             "images"
         ]
         for key in keys_to_stack:
-            batch[key] = torch.stack(batch[key], dim=0)
-        
+            try:
+                batch[key] = torch.stack(batch[key], dim=0)
+            except BaseException as e:
+                print(f"Error catched when stacking {key}:", e)
+                import pdb; pdb.set_trace()
         batch["ctrl_freqs"] = torch.tensor(batch["ctrl_freqs"])
     
         if len(input_ids) > 0:
