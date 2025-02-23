@@ -4,7 +4,7 @@ from third_party.rdt.configs.state_vec import STATE_VEC_IDX_MAPPING
 WIDOWX_STATE_INDICES = [
     STATE_VEC_IDX_MAPPING[f"arm_joint_{i}_pos"] for i in range(6)
 ] + [
-    STATE_VEC_IDX_MAPPING["gripper_open"]
+    STATE_VEC_IDX_MAPPING[f"gripper_joint_{i}_pos"] for i in range(2)
 ]
 
 WIDOWX_EEF_INDICES = [
@@ -16,7 +16,7 @@ WIDOWX_EEF_INDICES = [
 WIDOWX_QVEL_INDICES = [
     STATE_VEC_IDX_MAPPING[f"arm_joint_{i}_vel"] for i in range(6)
 ] + [
-    STATE_VEC_IDX_MAPPING["gripper_open_vel"]
+    STATE_VEC_IDX_MAPPING[f"gripper_joint_{i}_vel"] for i in range(2)
 ]
 
 
