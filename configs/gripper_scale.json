@@ -1,4 +1,8 @@
 {
+    "rdt": {
+        "qpos": [4.7908, 4.7888],
+        "action": [11.8997, 13.9231]
+    },
     "mobile_aloha": {
         "qpos": [4.7908, 4.7888],
         "action": [11.8997, 13.9231]
@@ -19,8 +23,8 @@
         "qpos": 1,
         "action": 1
     },
-    "widowx_bridge": {
-        "qpos": 1,
-        "action": 1
+    "widowx_bridge": { 
+        "qpos": [0.015,0.037],
+        "action": [-1,1]
     }
 }
