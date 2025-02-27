@@ -305,17 +305,42 @@ class VLAConsumerDataset(Dataset):
                 if self.use_hdf5:
                     res = self.hdf5_dataset.get_item()
                     content = res['meta']
-                    states = res['state']
-                    actions = res['actions']
-                    state_elem_mask = res['state_indicator']
-                    image_metas = [
-                        res['cam_high'], res['cam_high_mask'],
-                        res['cam_right_wrist'], res['cam_right_wrist_mask'],
-                        res['cam_left_wrist'], res['cam_left_wrist_mask'],
-                    ]
-                    state_std = res['state_std']
-                    state_mean = res['state_mean']
-                    state_norm = res['state_norm']
+                    if "sample_win" in res.keys():
+                        states = res["sample_win"]['state']
+                        actions = res["sample_win"]['actions']
+                        state_elem_mask = res["sample_win"]['state_indicator']
+                        image_metas = [
+                            res["sample_win"]['cam_high'], res["sample_win"]['cam_high_mask'],
+                            res["sample_win"]['cam_right_wrist'], res["sample_win"]['cam_right_wrist_mask'],
+                            res["sample_win"]['cam_left_wrist'], res["sample_win"]['cam_left_wrist_mask'],
+                        ]
+                        state_std = res["sample_win"]['state_std']
+                        state_mean = res["sample_win"]['state_mean']
+                        state_norm = res["sample_win"]['state_norm']
+
+                        states_l = res["sample_lose"]['state']
+                        actions_l = res["sample_lose"]['actions']
+                        state_elem_mask_l = res["sample_lose"]['state_indicator']
+                        image_metas_l = [
+                            res["sample_lose"]['cam_high'], res["sample_lose"]['cam_high_mask'],
+                            res["sample_lose"]['cam_right_wrist'], res["sample_lose"]['cam_right_wrist_mask'],
+                            res["sample_lose"]['cam_left_wrist'], res["sample_lose"]['cam_left_wrist_mask'],
+                        ]
+                        state_std_l = res["sample_lose"]['state_std']
+                        state_mean_l = res["sample_lose"]['state_mean']
+                        state_norm_l = res["sample_lose"]['state_norm']
+                    else:
+                        states = res['state']
+                        actions = res['actions']
+                        state_elem_mask = res['state_indicator']
+                        image_metas = [
+                            res['cam_high'], res['cam_high_mask'],
+                            res['cam_right_wrist'], res['cam_right_wrist_mask'],
+                            res['cam_left_wrist'], res['cam_left_wrist_mask'],
+                        ]
+                        state_std = res['state_std']
+                        state_mean = res['state_mean']
+                        state_norm = res['state_norm']
                 else:
                     (content, _, states, _, actions, _, 
                     state_elem_mask, *image_metas, 
@@ -347,6 +372,14 @@ class VLAConsumerDataset(Dataset):
                 
                 # Stat for the episode that the step belongs to 
                 data_dict["state_norm"] = state_norm
+
+                if self.use_hdf5 and "sample_lose" in res.keys():
+                    data_dict["states_l"] = states_l \
+                        if random.random() > self.cond_mask_prob else ds_state_mean
+                    data_dict["actions_l"] = actions_l
+                    data_dict["state_elem_mask_l"] = state_elem_mask_l \
+                        if random.random() > self.cond_mask_prob else np.zeros_like(state_elem_mask_l)
+                    data_dict["state_norm_l"] = state_norm_l
                 
                 # We replace the invalid images with the background image
                 # and also randomly mask images by the background image
@@ -414,6 +447,64 @@ class VLAConsumerDataset(Dataset):
                     image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
                     preprocessed_images.append(image)
                 data_dict["images"] = preprocessed_images
+
+                if self.use_hdf5 and "sample_lose" in res.keys():
+                    image_metas_l = list(self.pairwise(image_metas_l))
+                    mask_probs_l = [self.cond_mask_prob] * self.num_cameras
+                    if self.cam_ext_mask_prob >= 0.0:
+                        mask_probs_l[0] = self.cam_ext_mask_prob
+                    rearranged_images_l = []
+                    for i in range(self.img_history_size):
+                        for j in range(self.num_cameras):
+                            images, image_mask = image_metas_l[j]
+                            image, valid = images[i], image_mask[i]
+                            if valid and (math.prod(image.shape) > 0) and \
+                                (random.random() > mask_probs_l[j]):
+                                rearranged_images_l.append((image, True))
+                            else:
+                                rearranged_images_l.append((background_image.copy(), False))
+
+                    preprocessed_images_l = []
+                    processor_l = self.image_processor
+                    for image, valid in rearranged_images_l:
+                        image = Image.fromarray(image)
+                        if self.image_size is not None:
+                            image = transforms.Resize(self.image_size)(image) # (1008, 336)
+                        # assert image.height == 336, "We haven't prepare for training with images of different resolutions."
+                        
+                        if valid and self.auto_adjust_image_brightness:
+                            pixel_values = list(image.getdata())
+                            average_brightness = sum(sum(pixel) for pixel in pixel_values) / (len(pixel_values) * 255.0 * 3)
+                            if average_brightness <= 0.15:
+                                image = transforms.ColorJitter(brightness=(1.75,1.75))(image)
+                        
+                        # Only apply image augmentation to 50% of the images
+                        if valid and self.image_aug and (random.random() > 0.5):
+                            aug_type = random.choice([
+                                "corrput_only", "color_only", "both"])
+                            if aug_type != "corrput_only":
+                                image = transforms.ColorJitter(
+                                    brightness=0.3, contrast=0.4, saturation=0.5, hue=0.03)(image)
+                            if aug_type != "color_only":
+                                image = image_corrupt(image)
+                        
+                        if self.image_aspect_ratio == 'pad':
+                            def expand2square(pil_img, background_color):
+                                width, height = pil_img.size
+                                if width == height:
+                                    return pil_img
+                                elif width > height:
+                                    result = Image.new(pil_img.mode, (width, width), background_color)
+                                    result.paste(pil_img, (0, (width - height) // 2))
+                                    return result
+                                else:
+                                    result = Image.new(pil_img.mode, (height, height), background_color)
+                                    result.paste(pil_img, ((height - width) // 2, 0))
+                                    return result
+                            image = expand2square(image, tuple(int(x*255) for x in processor_l.image_mean))
+                        image = processor_l.preprocess(image, return_tensors='pt')['pixel_values'][0]
+                        preprocessed_images_l.append(image)
+                    data_dict["images_l"] = preprocessed_images_l
 
                 if self.use_precomp_lang_embed:
                     if content["instruction"][-1] == ".":
@@ -608,5 +699,90 @@ class DataCollatorForVLAPairDataset(object):
             batch["lang_embeds"] = lang_embeds
             batch["lang_attn_mask"] = input_lang_attn_mask
             
+        return batch
+
+
+class DataCollatorForVLATrajPairDataset(object):
+    """Collate examples for supervised training."""
+
+    def __init__(self, tokenizer: transformers.PreTrainedTokenizer) -> None:
+        self.tokenizer = tokenizer
+
+    def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
+        batch = {
+            "states": [],
+            "actions": [],
+            "state_elem_mask": [],
+            "state_norm": [],
+            "images": [],
+            "states_l": [],
+            "actions_l": [],
+            "state_elem_mask_l": [],
+            "state_norm_l": [],
+            "images_l": [],
+            "data_indices": [],
+            "ctrl_freqs": []
+        }
+        input_ids = []
+        lang_embeds = []
+        lang_embed_lens = []
+        
+        for instance in instances:
+            # Convert all the numpy arrays to tensor
+            keys_to_check = [
+                'states', 'actions',
+                'state_elem_mask', 'state_norm',
+                'states_l', 'actions_l',
+                'state_elem_mask_l', 'state_norm_l',
+            ]
+            for key in keys_to_check:
+                if isinstance(instance[key], torch.Tensor):
+                    item = instance[key]
+                else:
+                    item = torch.from_numpy(instance[key])
+                batch[key].append(item)
+
+            if "input_ids" in instance:
+                input_ids.append(instance["input_ids"])
+            else:
+                lang_embeds.append(instance["lang_embed"])
+                lang_embed_lens.append(instance["lang_embed"].shape[0])
+            
+            batch["images"].append(torch.stack(instance["images"], dim=0))
+            batch["images_l"].append(torch.stack(instance["images_l"], dim=0))
+            batch["data_indices"].append(instance["data_idx"])
+            batch["ctrl_freqs"].append(instance["ctrl_freq"])
+        
+        keys_to_stack = [
+            'states', 'actions',
+            'state_elem_mask', 'state_norm',
+            "images", 
+            'states_l', 'actions_l',
+            'state_elem_mask_l', 'state_norm_l',
+            "images_l"
+        ]
+        for key in keys_to_stack:
+            batch[key] = torch.stack(batch[key], dim=0)
+
+        batch["ctrl_freqs"] = torch.tensor(batch["ctrl_freqs"])
+    
+        if len(input_ids) > 0:
+            input_ids = torch.nn.utils.rnn.pad_sequence(
+                input_ids,
+                batch_first=True,
+                padding_value=self.tokenizer.pad_token_id)
+            batch["input_ids"] = input_ids
+            batch["lang_attn_mask"] = input_ids.ne(self.tokenizer.pad_token_id)
+        else:
+            lang_embeds = torch.nn.utils.rnn.pad_sequence(
+                lang_embeds,
+                batch_first=True,
+                padding_value=0)
+            input_lang_attn_mask = torch.zeros(
+                lang_embeds.shape[0], lang_embeds.shape[1], dtype=torch.bool)
+            for i, l in enumerate(lang_embed_lens):
+                input_lang_attn_mask[i, :l] = True
+            batch["lang_embeds"] = lang_embeds
+            batch["lang_attn_mask"] = input_lang_attn_mask
             
         return batch

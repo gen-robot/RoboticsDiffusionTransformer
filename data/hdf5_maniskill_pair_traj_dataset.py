@@ -45,35 +45,20 @@ DATASET_STATS = {'state_min': [-0.7463043928146362, -0.0801204964518547, -0.4976
                  'action_mean': [-0.00885344110429287, 0.5523102879524231, -0.007564723491668701, -2.0108158588409424, 0.004714342765510082, 2.615924596786499, 0.08461848646402359, -0.19301606714725494]}
 
 
-class HDF5VLADataset:
+class HDF5VLAPairDataset:
     """
     This class is used to sample episodes from the embodiment dataset
     stored in HDF5 files.
     """
-    def __init__(self, type="all", 
-                 recompute_normalization=False,
-                 with_other_task=True):
+    def __init__(self, 
+                 recompute_normalization=False):
         # The name of your dataset
         self.DATASET_NAME = "agilex"
 
-        self.data_dir = "/nvme1n1/embodied_agent/maniskill_original_data/demo_1k"
+        self.data_dir = "/nvme1n1/embodied_agent/maniskill_traj_pair_data"
         self.tasks = os.listdir(self.data_dir)
 
-        # Multiple tasks
-        self.type = type
-        assert self.type in ["all", "original", "only_correction", "mix"]
-        if with_other_task:
-            self.tasks = ['PickCube-v1', 
-                          'StackCube-v1', 
-                          'PlugCharger-v1', 
-                          'PushCube-v1', 
-                          'PegInsertionSide-v1']
-        else:
-            self.tasks = ['StackCube-v1']
-        if self.type == "all" or self.type == "mix":
-            self.tasks.append('StackCube-v2')
-        if self.type == "all" or self.type == "only_correction":
-            self.tasks.append('StackCube-v1-correction')
+        self.tasks = ['StackCube-v1', ]
         
         # Load configuration from YAML file
         with open('configs/base.yaml', 'r') as file:
@@ -83,13 +68,7 @@ class HDF5VLADataset:
         self.STATE_DIM = config['common']['state_dim']
 
         self.task_demo_num = {
-            "PegInsertionSide-v1": 1000,
-            "PickCube-v1": 1000,
             "StackCube-v1": 1000,
-            "PlugCharger-v1": 1000,
-            "PushCube-v1": 1000,
-            "StackCube-v2": 500,
-            "StackCube-v1-correction": 1000,
         }
 
         self.sum_demo_num = 0
@@ -99,6 +78,7 @@ class HDF5VLADataset:
         self.img = []
         self.state = []
         self.action = []
+        self.success_flag = []
 
         # open the hdf5 files in memory to speed up the data loading
         for task in self.tasks:
@@ -117,13 +97,14 @@ class HDF5VLADataset:
                     # images = f[traj]['obs']['sensor_data']['base_camera']['rgb'][:]
                     states = f[traj]['obs']['agent']['qpos'][:]
                     actions = f[traj]['actions'][:]
+                    success_flag = f[traj]["success"]
 
-                    if task == "StackCube-v1-correction" or task == "StackCube-v2":
-                        states = states[1:]
-                        actions = actions[1:]
+                    states = states[1:]
+                    actions = actions[1:]
 
                     self.state.append(states)
                     self.action.append(actions)
+                    self.success_flag.append(success_flag)
                     # self.img.append(images)
 
         if recompute_normalization:
@@ -152,8 +133,8 @@ class HDF5VLADataset:
         }
 
     def __len__(self):
-        # Assume each file contains 100 episodes
-        return self.sum_demo_num
+        # return the group number
+        return self.sum_demo_num // 10
 
     def get_dataset_name(self):
         return self.DATASET_NAME
@@ -175,11 +156,26 @@ class HDF5VLADataset:
         while True:
             if index is None:
                 index = np.random.randint(0, self.__len__())
-            valid, sample = self.parse_hdf5_file(index)
-            if valid:
-                return sample
-            else:
-                index = np.random.randint(0, self.__len__())
+            index1 = index * 10 + np.random.randint(0, 10)
+            index2 = index * 10 + np.random.randint(0, 10)
+
+            while (self.success_flag[index1] == 0) and (self.success_flag[index2] == 0):
+                index1 = index * 10 + np.random.randint(0, 10)
+                index2 = index * 10 + np.random.randint(0, 10)
+            
+            if index1 > index2:
+                index1, index2 = index2, index1
+            
+            valid1, sample1 = self.parse_hdf5_file(index1)
+            valid2, sample2 = self.parse_hdf5_file(index2)
+
+            sample = {
+                "meta": sample1["meta"],
+                "sample_win": sample1,
+                "sample_lose": sample2,
+            }
+
+            return sample
 
     def get_index(self, index):
         """
@@ -315,16 +311,8 @@ class HDF5VLADataset:
 if __name__ == "__main__":
     from PIL import Image
     
-    ds = HDF5VLADataset(type="all")
+    ds = HDF5VLAPairDataset()
 
-    json_data = {
-        'state_min': ds.state_min.tolist(),
-        'state_max': ds.state_max.tolist(),
-        'action_min': ds.action_min.tolist(),
-        'action_max': ds.action_max.tolist(),
-        'action_std': ds.action_std.tolist(),
-        'action_mean': ds.action_mean.tolist(),
-    }
-    print(json_data)
+    print(ds.get_item(0))
 
     

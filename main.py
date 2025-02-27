@@ -5,7 +5,7 @@ from train.train import train
 from train.eval import eval
 from train.train_maniskill import train as train_maniskill
 from train.train_robotwin import train as train_robotwin
-from train.train_dpo_maniskill import train as train_dpo_maniskill
+from train.train_traj_dpo_maniskill import train as train_dpo_maniskill
 
 from accelerate.logging import get_logger
 from setproctitle import setproctitle
@@ -362,6 +362,7 @@ def parse_args(input_args=None):
     parser.add_argument("--data_type", type=str, default="all", help="The type of data to use for maniskill model.")
     parser.add_argument("--dpo", action="store_true", help="Whether to use DPO.")
     parser.add_argument("--beta_dpo", type=float, default=5000, help="The beta DPO temperature controlling strength of KL penalty")
+    parser.add_argument("--dpo_config", type=float, default=0.01, help="Weight of DPO loss.")
 
     if input_args is not None:
         args = parser.parse_args(input_args)

@@ -38,17 +38,15 @@ from models.multimodal_encoder.siglip_encoder import SiglipVisionTower
 from models.multimodal_encoder.dinov2_encoder import DinoV2VisionTower
 from models.multimodal_encoder.t5_encoder import T5Embedder
 from models.rdt_runner import RDTRunner
-from train.dataset import DataCollatorForVLAPairDataset, VLAConsumerDataset, DataCollatorForVLAConsumerDataset
+from train.dataset import DataCollatorForVLAPairDataset, VLAConsumerDataset, DataCollatorForVLATrajPairDataset
 from train.sample import log_sample_res
 
 from scripts.maniskill_model import create_model
 
 try:
-    from ..data.hdf5_maniskill_dataset import HDF5VLADataset as HDF5ManiSkillDataset
-    from ..data.hdf5_maniskill_pair_dataset import HDF5VLAPairDataset as HDF5ManiSkillPairDataset
+    from ..data.hdf5_maniskill_pair_traj_dataset import HDF5VLAPairDataset as HDF5ManiSkillPairDataset
 except ImportError:
-    from data.hdf5_maniskill_dataset import HDF5VLADataset as HDF5ManiSkillDataset
-    from data.hdf5_maniskill_pair_dataset import HDF5VLAPairDataset as HDF5ManiSkillPairDataset
+    from data.hdf5_maniskill_pair_traj_dataset import HDF5VLAPairDataset as HDF5ManiSkillPairDataset
 
 if is_wandb_available():
     import wandb
@@ -260,7 +258,7 @@ def train(args, logger):
     )
     
     # Dataset and DataLoaders creation:
-    def make_dataset(args, config, is_sample=False, original=False):
+    def make_dataset(args, config, is_sample=False):
         if is_sample:
             image_aug=False
             cond_mask_prob=0
@@ -279,8 +277,8 @@ def train(args, logger):
             img_history_size=config["common"]["img_history_size"],
             dataset_type=args.dataset_type,
             image_aug=image_aug,
-            cond_mask_prob=cond_mask_prob,
-            cam_ext_mask_prob=cam_ext_mask_prob,
+            cond_mask_prob=0,
+            cam_ext_mask_prob=0,
             state_noise_snr=state_noise_snr,
             use_hdf5=args.load_from_hdf5,
             use_precomp_lang_embed=args.precomp_lang_embed,
@@ -291,29 +289,19 @@ def train(args, logger):
             enable_eef_obs=args.eef_obs,
             enable_eef_action=args.eef_action,
             enable_qvel_obs=args.qvel_obs,
-            coustom_dataset=HDF5ManiSkillDataset(type=args.data_type) if original else HDF5ManiSkillPairDataset(),
+            coustom_dataset=HDF5ManiSkillPairDataset(),
         )
     train_dataset = make_dataset(args, config)
-    train_original_dataset = make_dataset(args, config, original=True)
-    sample_dataset = make_dataset(args, config, is_sample=True, original=True)
+    sample_dataset = make_dataset(args, config, is_sample=True)
     
-    data_collator = DataCollatorForVLAPairDataset(tokenizer)
-    normal_data_collator = DataCollatorForVLAConsumerDataset(tokenizer)                                                    
+    data_collator = DataCollatorForVLATrajPairDataset(tokenizer)
+    normal_data_collator = DataCollatorForVLATrajPairDataset(tokenizer)                                                    
     
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=args.train_batch_size,
         shuffle=True,
         collate_fn=data_collator,
-        num_workers=args.dataloader_num_workers,
-        pin_memory=True,
-        persistent_workers=True
-    )
-    train_original_dataset = torch.utils.data.DataLoader(
-        train_original_dataset,
-        batch_size=args.train_batch_size,
-        shuffle=True,
-        collate_fn=normal_data_collator,
         num_workers=args.dataloader_num_workers,
         pin_memory=True,
         persistent_workers=True
@@ -345,8 +333,8 @@ def train(args, logger):
     )
 
     # Prepare everything with our `accelerator`.
-    rdt, optimizer, train_dataloader, train_original_dataset, sample_dataloader, lr_scheduler = accelerator.prepare(
-        rdt, optimizer, train_dataloader, train_original_dataset, sample_dataloader, lr_scheduler                   
+    rdt, optimizer, train_dataloader, sample_dataloader, lr_scheduler = accelerator.prepare(
+        rdt, optimizer, train_dataloader, sample_dataloader, lr_scheduler                   
     )
 
     ema_rdt.to(accelerator.device, dtype=weight_dtype)
@@ -389,8 +377,6 @@ def train(args, logger):
                         ncols=100)
     progress_bar.set_description("Steps")
 
-    original_dataset_iter = iter(train_original_dataset)
-
     # TODO: change to DPO training
     loss_for_log = {}
     for epoch in range(first_epoch, args.num_train_epochs):
@@ -400,19 +386,30 @@ def train(args, logger):
         # Forward and backward...
         for batch in train_dataloader:
             with accelerator.accumulate(rdt):
-                images = batch["images"].to(dtype=weight_dtype)
-                states = batch["states"].to(dtype=weight_dtype) # (B, T, D_a)
+                images_w = batch["images"].to(dtype=weight_dtype)
+                states_w = batch["states"].to(dtype=weight_dtype) # (B, T, D_a)
                 # We only use the last state as input
-                states = states[:, -1:, :]
-                actions = batch["actions"].to(dtype=weight_dtype)
-                bad_actions = batch["bad_actions"].to(dtype=weight_dtype)
-                state_elem_mask = batch["state_elem_mask"].to(dtype=weight_dtype)
+                states_w = states_w[:, -1:, :]
+                actions_w = batch["actions"].to(dtype=weight_dtype)
+                state_elem_mask_w = batch["state_elem_mask"].to(dtype=weight_dtype)
+
+                images_l = batch["images_l"].to(dtype=weight_dtype)
+                states_l = batch["states_l"].to(dtype=weight_dtype) # (B, T, D_a)
+                # We only use the last state as input
+                states_l = states_l[:, -1:, :]
+                actions_l = batch["actions_l"].to(dtype=weight_dtype)
+                state_elem_mask_l = batch["state_elem_mask_l"].to(dtype=weight_dtype)
+
                 ctrl_freqs = batch["ctrl_freqs"]
 
                 with torch.no_grad():
-                    batch_size, _, C, H, W = images.shape
-                    image_embeds = vision_encoder(images.reshape(-1, C, H, W)).detach()
-                    image_embeds = image_embeds.reshape((batch_size, -1, vision_encoder.hidden_size))
+                    batch_size, _, C, H, W = images_w.shape
+                    image_embeds_w = vision_encoder(images_w.reshape(-1, C, H, W)).detach()
+                    image_embeds_w = image_embeds_w.reshape((batch_size, -1, vision_encoder.hidden_size))
+
+                    batch_size, _, C, H, W = images_l.shape
+                    image_embeds_l = vision_encoder(images_l.reshape(-1, C, H, W)).detach()
+                    image_embeds_l = image_embeds_l.reshape((batch_size, -1, vision_encoder.hidden_size))
 
                     lang_attn_mask = batch["lang_attn_mask"]
                     text_embeds = batch["lang_embeds"].to(dtype=weight_dtype) \
@@ -422,59 +419,22 @@ def train(args, logger):
                             attention_mask=lang_attn_mask
                         )["last_hidden_state"].detach()
                 
-                state_elem_mask = state_elem_mask.unsqueeze(1)
-                dpo_loss, info = rdt.compute_dpo_loss(
+                state_elem_mask_w = state_elem_mask_w.unsqueeze(1)
+                state_elem_mask_l = state_elem_mask_l.unsqueeze(1)
+                loss, info = rdt.compute_diff_dpo_loss(
                     lang_tokens=text_embeds,
                     lang_attn_mask=lang_attn_mask,
-                    img_tokens=image_embeds,
-                    state_tokens=states,
-                    action_w=actions,
-                    action_l=bad_actions,
-                    action_mask=state_elem_mask,
+                    img_tokens_w=image_embeds_w,
+                    state_tokens_w=states_w,
+                    action_w=actions_w,
+                    action_mask_w=state_elem_mask_w,
+                    img_tokens_l=image_embeds_l,
+                    state_tokens_l=states_l,
+                    action_l=actions_l,
+                    action_mask_l=state_elem_mask_l,
                     ctrl_freqs=ctrl_freqs,
                     ref_policy=ref_rdt,
                 )
-
-                # SFT Loss
-                try:
-                    original_batch = next(original_dataset_iter)
-                except StopIteration:
-                    original_dataset_iter = iter(train_original_dataset)
-                    original_batch = next(original_dataset_iter)
-                
-                images_o = original_batch["images"].to(dtype=weight_dtype)
-                states_o = original_batch["states"].to(dtype=weight_dtype) # (B, T, D_a)
-
-                states_o = states_o[:, -1:, :]
-                actions_o = original_batch["actions"].to(dtype=weight_dtype)
-                state_elem_mask_o = original_batch["state_elem_mask"].to(dtype=weight_dtype)
-                ctrl_freqs_o = original_batch["ctrl_freqs"]
-
-                with torch.no_grad():
-                    batch_size, _, C, H, W = images_o.shape
-                    image_embeds_o = vision_encoder(images_o.reshape(-1, C, H, W)).detach()
-                    image_embeds_o = image_embeds_o.reshape((batch_size, -1, vision_encoder.hidden_size))
-
-                    lang_attn_mask_o = original_batch["lang_attn_mask"]
-                    text_embeds_o = original_batch["lang_embeds"].to(dtype=weight_dtype) \
-                        if args.precomp_lang_embed \
-                        else text_encoder(
-                            input_ids=original_batch["input_ids"],
-                            attention_mask=lang_attn_mask_o
-                        )["last_hidden_state"].detach()
-                
-                state_elem_mask_o = state_elem_mask_o.unsqueeze(1)
-                sft_loss = rdt(
-                    lang_tokens=text_embeds_o,
-                    lang_attn_mask=lang_attn_mask_o,
-                    img_tokens=image_embeds_o,
-                    state_tokens=states_o,
-                    action_gt=actions_o,
-                    action_mask=state_elem_mask_o,
-                    ctrl_freqs=ctrl_freqs_o,
-                )
-
-                loss = dpo_loss * args.dpo_config + sft_loss
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -527,8 +487,6 @@ def train(args, logger):
 
             logs = {
                 "loss": loss.detach().item(), 
-                "sft_loss": sft_loss.detach().item(),
-                "dpo_loss": dpo_loss.detach().item(),
                 "lr": lr_scheduler.get_last_lr()[0],
                 "detail/implicit_acc": info["implicit_acc"].detach().item(),
                 "detail/avg_model_mse": info["avg_model_mse"].detach().item(),

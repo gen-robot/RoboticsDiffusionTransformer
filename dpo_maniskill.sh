@@ -8,8 +8,10 @@ export NCCL_NVLS_ENABLE=0
 now="$(date +"%Y%m%d-%H%M%S")"
 lr=$1
 beta_dpo=$2
+dpo_config=$3
+type=$4
 
-run_name="rdt-maniskill-dpo-lr${lr}-beta_dpo${beta_dpo}"
+run_name="rdt-maniskill-dpo-lr${lr}-beta_dpo${beta_dpo}-dpo_config${dpo_config}-type${type}"
 save_path="/nvme0n1/rdt-dpo"
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
@@ -42,7 +44,7 @@ fi
 accelerate launch main.py \
     --deepspeed="./configs/zero2.json" \
     --robot_name="panda" \
-    --run_name="rdt-maniskill-lr${lr}-beta_dpo${beta_dpo}" \
+    --run_name="rdt-maniskill-lr${lr}-beta_dpo${beta_dpo}-dpo_config${dpo_config}-type${type}" \
     --pretrained_model_name_or_path="google/rdt-maniskill/rdt/mp_rank_00_model_states.pt" \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
     --pretrained_vision_encoder_name_or_path=$VISION_ENCODER_NAME \
@@ -64,4 +66,6 @@ accelerate launch main.py \
     --maniskill \
     --dpo \
     --beta_dpo ${beta_dpo} \
+    --dpo_config ${dpo_config} \
+    --data_type=${type} \
     --report_to=wandb
