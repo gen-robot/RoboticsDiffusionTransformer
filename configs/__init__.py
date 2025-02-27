@@ -17,7 +17,7 @@ WIDOWX_EEF_INDICES = [
 WIDOWX_QVEL_INDICES = [
     STATE_VEC_IDX_MAPPING[f"arm_joint_{i}_vel"] for i in range(6)
 ] + [
-    STATE_VEC_IDX_MAPPING[f"gripper_joint_{i}_vel"] for i in range(2)
+    STATE_VEC_IDX_MAPPING[f"gripper_joint_{i}_vel"] for i in range(1)
 ]
 
 
