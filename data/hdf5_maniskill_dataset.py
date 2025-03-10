@@ -14,9 +14,10 @@ from PIL import Image
 try:
     # Assuming STATE_VEC_IDX_MAPPING is a dictionary mapping state variable names to indices
     from ..configs.state_vec import STATE_VEC_IDX_MAPPING
+    from ..constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
 except ImportError as e:
     from configs.state_vec import STATE_VEC_IDX_MAPPING
-
+    from constants import RDT_ROOT_DIR, RDT_CONFIG_DIR
 def interpolate_action_sequence(action_sequence, target_size):
     """
     Extend the action sequece to `target_size` by linear interpolation.
@@ -52,13 +53,18 @@ class HDF5VLADataset:
     This class is used to sample episodes from the embodiment dataset
     stored in HDF5 files.
     """
-    def __init__(self, stat_type="all", 
+    def __init__(self, 
+                 data_path=None,
+                 stat_type="original", 
                  recompute_normalization=False,
-                 with_other_task=True):
+                 with_other_task=False):
         # The name of your dataset
         self.DATASET_NAME = "agilex"
 
-        self.data_dir = "data/datasets/maniskill_data/demo_new"
+        if data_path is None:
+            self.data_dir = "data/datasets/maniskill_data/demo_new"
+        else:
+            self.data_dir = data_path
         self.tasks = os.listdir(self.data_dir)
 
         # Multiple tasks
@@ -78,7 +84,7 @@ class HDF5VLADataset:
             self.tasks.append('StackCube-v1-correction')
         
         # Load configuration from YAML file
-        with open('configs/base.yaml', 'r') as file:
+        with open(f'{RDT_CONFIG_DIR}/base.yaml', 'r') as file:
             config = yaml.safe_load(file)
         self.CHUNK_SIZE = config['common']['action_chunk_size']
         self.IMG_HISTORY_SIZE = config['common']['img_history_size']
@@ -160,7 +166,7 @@ class HDF5VLADataset:
     def get_dataset_name(self):
         return self.DATASET_NAME
 
-    def get_item(self, index=None):
+    def get_item(self, index=None, step_id=None):
         """
         Get a training sample at a random timestep.
 
@@ -177,7 +183,7 @@ class HDF5VLADataset:
         while True:
             if index is None:
                 index = np.random.randint(0, self.__len__())
-            valid, sample = self.parse_hdf5_file(index)
+            valid, sample = self.parse_hdf5_file(index, step_id)
             if valid:
                 return sample
             else:
@@ -205,7 +211,7 @@ class HDF5VLADataset:
 
         return task_index, task_inner_index
 
-    def parse_hdf5_file(self, index):
+    def parse_hdf5_file(self, index, step_id=None):
         """
         Parse an HDF5 file to generate a training sample at a random timestep.
 
@@ -217,7 +223,10 @@ class HDF5VLADataset:
             dict: A dictionary containing the training sample.
         """
         num_steps = len(self.action[index])
-        step_index = np.random.randint(0, num_steps)
+        if step_id is None:
+            step_index = np.random.randint(0, num_steps)
+        else:
+            step_index = step_id
         task_index, task_inner_index = self.get_index(index)
         language = self.task2lang[self.tasks[task_index]]
         # Skip these episodes since in the eef version dataset they are invalid.
@@ -259,8 +268,10 @@ class HDF5VLADataset:
 
         # Get state and action at the specified timestep
         state = states[step_index: step_index + 1]
+        raw_state = states[step_index: step_index+1]
         runtime_chunksize = self.CHUNK_SIZE // 4
         action_sequence = actions[step_index: step_index + runtime_chunksize]
+        raw_actions = actions[step_index: step_index + runtime_chunksize]
         # we use linear interpolation to pad the action sequence
 
         # Pad action sequence if necessary
@@ -304,6 +315,8 @@ class HDF5VLADataset:
             "state_mean": state_mean,
             "state_norm": state_norm,
             "actions": action_sequence,
+            "qpos": raw_state,
+            "raw_actions": raw_actions,
             "state_indicator": state_indicator,
             "cam_high": img_history,  # Assuming images0 are high-level camera images
             "cam_high_mask": img_history_mask,
